@@ -1,36 +1,78 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# Job Matcher (web edition)
 
-## Getting Started
+A multi-user web app: each person uploads their CV, answers a short questionnaire,
+and the app scrapes fresh jobs (via **their own Apify key**), scores them against
+their profile with a keyword engine, and shows ranked matches with export to CSV /
+Google Sheets / Excel.
 
-First, run the development server:
+This is the **hosted Gemini edition**, separate from the local Python/Claude tool.
+It shares no code with that version.
 
-```bash
-npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
-```
+- **Stack:** Next.js (App Router, TypeScript) + Tailwind + Prisma + Postgres
+- **Hosting:** GitHub → Vercel
+- **AI:** works fully on keyword scoring today. Gemini is optional and drops into
+  one function (`src/lib/ai.ts → geminiRescore`) when you add `GEMINI_API_KEY`.
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+## What works without Gemini
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+Everything: accounts, CV parsing (PDF/DOCX/TXT), questionnaire, per-user scoring
+strategy, Apify scraping, ranked results with reasons, status tracking, CSV export.
+The only thing waiting on Gemini is a nuance "read each description" re-rank pass —
+stubbed as a no-op so nothing breaks.
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+## Local development
 
-## Learn More
+1. Copy env and fill values:
+   ```bash
+   cp .env.example .env.local
+   ```
+   - `DATABASE_URL` — a Postgres URL. Easiest is a free Neon project (neon.tech).
+   - `AUTH_SECRET` and `ENCRYPTION_KEY` — run `openssl rand -base64 32` for each.
+2. Create the tables:
+   ```bash
+   npm run db:push
+   ```
+3. Run it:
+   ```bash
+   npm run dev
+   ```
+   Open http://localhost:3000, sign up, then fill in your profile.
 
-To learn more about Next.js, take a look at the following resources:
+## Deploy to Vercel
 
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
+1. Push this folder to a **new GitHub repo**.
+2. In Vercel: **New Project → import the repo**.
+3. Add a Postgres store: **Storage → Create → Neon** (Vercel sets `DATABASE_URL`
+   automatically), or paste your own `DATABASE_URL`.
+4. Add env vars in **Settings → Environment Variables**: `AUTH_SECRET`,
+   `ENCRYPTION_KEY` (and later `GEMINI_API_KEY`).
+5. Deploy. After the first deploy, push the schema once from your machine against
+   the production DB:
+   ```bash
+   npm run db:push
+   ```
+   (or add a one-off `prisma migrate deploy` step).
 
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
+## Per-user setup (each person who logs in)
 
-## Deploy on Vercel
+1. Sign up with email + password.
+2. Profile page → upload CV, answer the questionnaire, paste **their own Apify
+   API key** (apify.com → Settings → API & Integrations). The key is encrypted
+   at rest (AES-256-GCM).
+3. Dashboard → **Run job search**.
 
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
+## Enabling Gemini later
 
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+1. `npm install @google/generative-ai`
+2. Implement `geminiRescore` in `src/lib/ai.ts` (send CV + strategy + each job
+   description, ask for a 0–100 fit score + one-line reason, merge into the score).
+3. Set `GEMINI_API_KEY` in Vercel. No other changes needed.
+
+## Notes
+
+- Scoring logic lives in `src/lib/scoring.ts` and the per-user strategy in
+  `src/lib/strategy.ts` — both are generalized for any job seeker.
+- Apify sources are LinkedIn (worldwide) + JobStreet (MY/SG). Add more in
+  `src/lib/apify.ts`.
+- Remaining `npm audit` warnings are in Prisma's build-time CLI (mysql2 /
+  deepmerge-ts), not in the deployed runtime.

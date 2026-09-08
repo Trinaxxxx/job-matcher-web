@@ -1,0 +1,71 @@
+// Job Matcher (Gemini/web edition) — database schema
+// Separate from the local Python/Claude tool. Postgres (Neon on Vercel).
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model User {
+  id           String   @id @default(cuid())
+  email        String   @unique
+  passwordHash String
+  createdAt    DateTime @default(now())
+
+  // Encrypted at rest (see lib/crypto.ts). User brings their own Apify key.
+  apifyKeyEnc  String?
+
+  profile      Profile?
+  jobs         Job[]
+}
+
+// One profile per user: parsed CV text + questionnaire answers + derived strategy.
+model Profile {
+  id          String   @id @default(cuid())
+  userId      String   @unique
+  user        User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  cvText      String?  @db.Text
+  cvFileName  String?
+
+  // Questionnaire answers (raw JSON) and the derived scoring strategy (JSON).
+  answers     Json?
+  strategy    Json?
+
+  updatedAt   DateTime @updatedAt
+  createdAt   DateTime @default(now())
+}
+
+// A scraped + scored job, owned by one user.
+model Job {
+  id           String   @id @default(cuid())
+  userId       String
+  user         User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  // De-dupe key: hash of (title|company|location) per user.
+  fingerprint  String
+
+  title        String
+  company      String?
+  location     String?
+  salary       String?
+  url          String?
+  source       String?
+  description  String?  @db.Text
+  postedDate   String?
+
+  score        Int      @default(0)   // 0..100
+  tier         String?                 // e.g. "Strong match"
+  reasons      Json?                   // string[] explaining the score
+  aiScored     Boolean  @default(false)
+
+  status       String   @default("New") // New / Interested / Applied / Rejected
+  createdAt    DateTime @default(now())
+
+  @@unique([userId, fingerprint])
+  @@index([userId, score])
+}
