@@ -2,6 +2,8 @@
 // "strategy". This is the generalized, per-user replacement for the hardcoded
 // strategy.md in the local Python tool — it works for any job seeker.
 
+import { z } from "zod";
+
 export type Answers = {
   targetTitles?: string;     // e.g. "product manager, program manager"
   skills?: string;           // e.g. "SQL, roadmapping, stakeholder management"
@@ -27,6 +29,30 @@ export type Strategy = {
   seniority?: string;
   remoteOk: boolean;
 };
+
+// Validation for the questionnaire body (H). Unknown keys are stripped and every
+// free-text field is length-capped so callers can't stuff unbounded / unexpected
+// JSON into the DB (a stored-XSS and DB-bloat vector). Keep in sync with Answers.
+const optStr = (max: number) => z.string().max(max).optional();
+export const AnswersSchema = z
+  .object({
+    targetTitles: optStr(500),
+    skills: optStr(1000),
+    industries: optStr(500),
+    dealbreakers: optStr(1000),
+    locations: optStr(500),
+    excludeLocations: optStr(500),
+    minSalary: optStr(50),
+    currency: optStr(20),
+    seniority: optStr(50),
+    remoteOk: z.boolean().optional(),
+  })
+  .strip() satisfies z.ZodType<Answers>;
+
+export const ProfileBodySchema = z.object({
+  answers: AnswersSchema.optional(),
+  apifyKey: z.string().max(500).optional(),
+});
 
 const STOPWORDS = new Set(
   ("a an and are as at be by for from has have i in is it its of on or that the to was were will with " +

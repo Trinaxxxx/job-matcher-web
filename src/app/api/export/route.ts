@@ -1,16 +1,21 @@
-import { NextResponse } from "next/server";
+import { NextResponse, type NextRequest } from "next/server";
 import { prisma } from "@/lib/db";
 import { getUserId } from "@/lib/auth";
+import { checkRateLimit } from "@/lib/ratelimit";
+import { csvCell } from "@/lib/csv";
 
 // CSV export — opens in Excel / Google Sheets. (Notion push can be added later.)
-function csvCell(v: unknown): string {
-  const s = v == null ? "" : String(v);
-  return `"${s.replace(/"/g, '""').replace(/\r?\n/g, " ")}"`;
-}
 
-export async function GET() {
+export async function GET(req: NextRequest) {
   const userId = await getUserId();
   if (!userId) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+
+  if (!(await checkRateLimit(req, "general", userId))) {
+    return NextResponse.json(
+      { error: "Too many requests. Please wait a few minutes and try again." },
+      { status: 429 }
+    );
+  }
 
   const jobs = await prisma.job.findMany({
     where: { userId },

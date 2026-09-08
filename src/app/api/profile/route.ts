@@ -2,7 +2,8 @@ import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/db";
 import { getUserId } from "@/lib/auth";
 import { encrypt } from "@/lib/crypto";
-import { buildStrategy, type Answers } from "@/lib/strategy";
+import { buildStrategy, ProfileBodySchema } from "@/lib/strategy";
+import { checkRateLimit } from "@/lib/ratelimit";
 
 export async function GET() {
   const userId = await getUserId();
@@ -26,9 +27,20 @@ export async function POST(req: NextRequest) {
   const userId = await getUserId();
   if (!userId) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
-  const body = await req.json().catch(() => ({}));
-  const answers: Answers = body.answers ?? {};
-  const apifyKey: string | undefined = body.apifyKey?.trim() || undefined;
+  if (!(await checkRateLimit(req, "general", userId))) {
+    return NextResponse.json(
+      { error: "Too many requests. Please wait a few minutes and try again." },
+      { status: 429 }
+    );
+  }
+
+  const raw = await req.json().catch(() => ({}));
+  const parsed = ProfileBodySchema.safeParse(raw);
+  if (!parsed.success) {
+    return NextResponse.json({ error: "Invalid profile data" }, { status: 400 });
+  }
+  const answers = parsed.data.answers ?? {};
+  const apifyKey: string | undefined = parsed.data.apifyKey?.trim() || undefined;
 
   const existing = await prisma.profile.findUnique({ where: { userId } });
   const cvText = existing?.cvText ?? "";

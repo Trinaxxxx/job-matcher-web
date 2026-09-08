@@ -3,12 +3,20 @@ import { prisma } from "@/lib/db";
 import { getUserId } from "@/lib/auth";
 import { parseCv } from "@/lib/cv";
 import { buildStrategy, type Answers } from "@/lib/strategy";
+import { checkRateLimit } from "@/lib/ratelimit";
 
 export const maxDuration = 60;
 
 export async function POST(req: NextRequest) {
   const userId = await getUserId();
   if (!userId) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+
+  if (!(await checkRateLimit(req, "general", userId))) {
+    return NextResponse.json(
+      { error: "Too many requests. Please wait a few minutes and try again." },
+      { status: 429 }
+    );
+  }
 
   const form = await req.formData();
   const file = form.get("cv");
