@@ -54,6 +54,15 @@ function strategyDigest(s: Strategy): string {
   if (s.seniority) parts.push(`Desired seniority: ${s.seniority}`);
   if (s.minSalary) parts.push(`Minimum salary: ${s.minSalary}${s.currency ? " " + s.currency : ""}`);
   if (s.remoteOk) parts.push(`Open to remote.`);
+  // Intent block — what the candidate wants next, which the CV alone can't state.
+  // This is the strongest signal for judging fit in the ambiguous mid-range.
+  const it = s.intent;
+  if (it) {
+    if (it.careerMove) parts.push(`Career move: ${it.careerMove}.`);
+    if (it.careerGoal) parts.push(`What they want next: ${it.careerGoal}`);
+    if (it.priorities) parts.push(`What matters most (ranked): ${it.priorities}`);
+    if (it.workStyle) parts.push(`Preferred work style: ${it.workStyle}`);
+  }
   return parts.join("\n");
 }
 
@@ -95,9 +104,13 @@ export async function geminiRescore(
           system:
             "You assess how well a specific job posting fits a specific candidate. " +
             "Base your judgement ONLY on the candidate's CV, their stated preferences, and the job description provided. " +
-            "Score 0-100, where 85+ means a strong, apply-worthy fit (role, seniority, skills, and preferences all align). " +
+            "The candidate's stated intent (their career move, what they want next, ranked priorities, and preferred work style) " +
+            "reflects what they WANT and outweighs raw CV/skill overlap: a role the CV qualifies them for but that runs against their " +
+            "stated goal or dealbreaks a top priority is NOT a strong fit and must score lower. " +
+            "Score 0-100, where 85+ means a strong, apply-worthy fit (role, seniority, skills, AND stated intent all align). " +
             "Be strict: reserve 85+ for genuinely aligned roles. " +
-            "The summary is 2-3 sentences addressed to the candidate explaining why this role does or does not fit them, citing concrete overlaps and gaps.",
+            "The summary is 2-3 sentences addressed to the candidate explaining why this role does or does not fit them, " +
+            "citing concrete overlaps and gaps against both their background and their stated intent.",
           prompt:
             `CANDIDATE PREFERENCES\n${profile}\n\n` +
             `CANDIDATE CV\n${cv}\n\n` +

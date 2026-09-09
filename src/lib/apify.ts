@@ -18,26 +18,32 @@ async function runActor(actorId: string, token: string, input: unknown): Promise
 }
 
 // Map a raw LinkedIn scraper item to our common RawJob shape.
+// Primary keys are the documented output fields of
+// worldunboxer/rapid-linkedin-scraper (snake_case). The camelCase/other
+// fallbacks are kept so the mapper degrades gracefully if the actor's schema
+// shifts or a different LinkedIn actor is swapped in.
 function mapLinkedIn(item: any): RawJob {
   return {
-    title: item.title || item.jobTitle,
-    company: item.companyName || item.company,
+    title: item.job_title || item.title || item.jobTitle,
+    company: item.company_name || item.companyName || item.company,
     location: item.location,
-    salary: item.salary || item.salaryInfo,
-    url: item.jobUrl || item.link || item.url,
+    salary: item.salary_range || item.salary || item.salaryInfo,
+    url: item.job_url || item.apply_url || item.jobUrl || item.link || item.url,
     source: "LinkedIn",
-    description: item.description || item.descriptionText,
-    postedDate: item.postedAt || item.postedDate,
+    description: item.job_description || item.description || item.descriptionText,
+    postedDate: item.time_posted || item.postedAt || item.postedDate,
   };
 }
 
+// Primary keys are the documented output fields of
+// blackfalcondata/jobstreet-scraper. Fallbacks kept for resilience.
 function mapJobStreet(item: any): RawJob {
   return {
     title: item.title || item.jobTitle,
     company: item.company || item.companyName,
     location: item.location || item.jobLocation,
-    salary: item.salary,
-    url: item.url || item.jobUrl,
+    salary: item.salaryText || item.salary,
+    url: item.canonicalUrl || item.applyUrl || item.sourceUrl || item.url || item.jobUrl,
     source: "JobStreet",
     description: item.description || item.jobDescription,
     postedDate: item.postedDate || item.listingDate,

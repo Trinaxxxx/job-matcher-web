@@ -33,19 +33,82 @@ function has(text: string, needle: string): boolean {
   return text.includes(needle.toLowerCase());
 }
 
-function countHits(text: string, needles: string[]): { hits: string[] } {
+// Word-boundary-aware match for "wordish" skill keywords, so short tokens like
+// "r", "go", "java" don't match inside "reporting", "good", "javascript".
+// Symbol-bearing skills (c++, .net, node.js) keep plain substring matching, as a
+// letter-boundary rule doesn't apply cleanly to them.
+function hasWord(text: string, needle: string): boolean {
+  const n = needle.toLowerCase();
+  if (!/^[a-z0-9]([a-z0-9 ]*[a-z0-9])?$/.test(n)) return text.includes(n);
+  const isLetter = (c: string) => c >= "a" && c <= "z";
+  for (let from = 0; ; ) {
+    const i = text.indexOf(n, from);
+    if (i < 0) return false;
+    const before = i === 0 ? "" : text[i - 1];
+    const after = i + n.length >= text.length ? "" : text[i + n.length];
+    if (!isLetter(before) && !isLetter(after)) return true;
+    from = i + 1;
+  }
+}
+
+function countHits(text: string, needles: string[], wordish = false): { hits: string[] } {
+  const match = wordish ? hasWord : has;
   const hits: string[] = [];
-  for (const n of needles) if (n && has(text, n)) hits.push(n);
+  for (const n of needles) if (n && match(text, n)) hits.push(n);
   return { hits };
 }
 
-function parseSalaryNumber(salary?: string): number | null {
+// Approximate full-time conversion factors, used to bring hourly/daily/weekly/
+// annual pay onto a common MONTHLY basis for comparison with the user's floor.
+const HOURS_PER_MONTH = (40 * 52) / 12; // 40h/week full-time ≈ 173.3h/month
+const WORKDAYS_PER_MONTH = 260 / 12; // ~21.7 working days/month
+const WEEKS_PER_MONTH = 52 / 12; // ≈ 4.33
+
+type SalaryBasis = "hourly" | "daily" | "weekly" | "monthly" | "annual";
+type ParsedSalary = { monthly: number; approx: boolean; basis: SalaryBasis };
+
+function detectBasis(s: string): SalaryBasis | null {
+  if (/(per\s*hour|\/\s*h(ou)?r|hourly|an hour|p\/h)\b/.test(s) || /\bhr\b/.test(s)) return "hourly";
+  if (/(per\s*day|\/\s*day|daily|a day)\b/.test(s)) return "daily";
+  if (/(per\s*week|\/\s*w(ee)?k|weekly|a week|p\/w)\b/.test(s)) return "weekly";
+  if (/(per\s*month|\/\s*mo(nth)?|monthly|a month|pcm|p\/m)\b/.test(s)) return "monthly";
+  if (/(per\s*(year|annum)|\/\s*y(ea)?r|annually|annual|yearly|a year|p\.?a\.?)\b/.test(s)) return "annual";
+  return null;
+}
+
+// Parse a free-text salary into an approximate monthly figure. Handles k/m
+// suffixes ("120k" → 120000, "1.2m" → 1_200_000), thousands commas, ranges (uses
+// the top of the range), and hourly/daily/weekly/annual periods. Returns null
+// when no usable number is present (e.g. "Negotiable").
+function parseSalary(salary?: string): ParsedSalary | null {
   if (!salary) return null;
-  const nums = (salary.replace(/,/g, "").match(/\d{3,7}/g) || []).map(Number);
+  const s = salary.toLowerCase().replace(/(\d),(\d)/g, "$1$2"); // strip thousands commas
+  const nums: number[] = [];
+  for (const m of s.matchAll(/(\d+(?:\.\d+)?)\s*([km])?/g)) {
+    let v = parseFloat(m[1]);
+    if (!Number.isFinite(v)) continue;
+    if (m[2] === "k") v *= 1_000;
+    else if (m[2] === "m") v *= 1_000_000;
+    nums.push(v);
+  }
   if (!nums.length) return null;
-  let amt = Math.max(...nums);
-  if (amt > 60000) amt = Math.round(amt / 12); // looks annual -> monthly
-  return amt;
+  const amt = Math.max(...nums);
+
+  let basis = detectBasis(s);
+  if (!basis) basis = amt >= 30_000 ? "annual" : "monthly"; // no period stated: infer by magnitude
+
+  switch (basis) {
+    case "hourly":
+      return { monthly: amt * HOURS_PER_MONTH, approx: true, basis };
+    case "daily":
+      return { monthly: amt * WORKDAYS_PER_MONTH, approx: true, basis };
+    case "weekly":
+      return { monthly: amt * WEEKS_PER_MONTH, approx: true, basis };
+    case "annual":
+      return { monthly: amt / 12, approx: true, basis };
+    default:
+      return { monthly: amt, approx: false, basis: "monthly" };
+  }
 }
 
 function tierFor(score: number): string {
@@ -99,7 +162,7 @@ export function scoreJob(job: RawJob, s: Strategy): ScoreResult {
   }
 
   // Must-have skills / industries.
-  const must = countHits(text, s.mustHaveKeywords).hits;
+  const must = countHits(text, s.mustHaveKeywords, true).hits;
   if (must.length) {
     const pts = Math.min(24, must.length * 6);
     score += pts;
@@ -107,7 +170,7 @@ export function scoreJob(job: RawJob, s: Strategy): ScoreResult {
   }
 
   // Nice-to-haves (CV-derived).
-  const nice = countHits(text, s.niceToHaveKeywords).hits;
+  const nice = countHits(text, s.niceToHaveKeywords, true).hits;
   if (nice.length) {
     const pts = Math.min(10, nice.length * 2);
     score += pts;
@@ -125,23 +188,26 @@ export function scoreJob(job: RawJob, s: Strategy): ScoreResult {
   }
 
   // Dealbreaker keyword in DESCRIPTION (not title) = penalty, not exclusion.
-  const softExcl = countHits(desc, s.excludeKeywords).hits;
+  const softExcl = countHits(desc, s.excludeKeywords, true).hits;
   if (softExcl.length) {
     const pts = Math.min(20, softExcl.length * 10);
     score -= pts;
     reasons.push(`-${pts} dealbreaker term(s) in description (${softExcl.slice(0, 3).join(", ")})`);
   }
 
-  // Salary floor.
+  // Salary floor. Job pay is normalized to an approximate MONTHLY figure so
+  // hourly/annual/etc. postings compare fairly against the user's monthly floor.
   if (s.minSalary) {
-    const amt = parseSalaryNumber(job.salary);
-    if (amt !== null) {
+    const parsed = parseSalary(job.salary);
+    if (parsed !== null) {
+      const amt = Math.round(parsed.monthly);
+      const tag = parsed.approx ? ` (~approx, ${parsed.basis})` : "";
       if (amt < s.minSalary) {
         score -= 12;
-        reasons.push(`-12 salary ~${amt} below your floor ${s.minSalary}`);
+        reasons.push(`-12 salary ~${amt}/mo${tag} below your floor ${s.minSalary}`);
       } else {
         score += 4;
-        reasons.push(`+4 salary meets your floor`);
+        reasons.push(`+4 salary ~${amt}/mo${tag} meets your floor`);
       }
     }
   }

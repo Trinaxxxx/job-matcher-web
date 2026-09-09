@@ -12,6 +12,21 @@ export default function AuthForm({ mode }: { mode: "login" | "signup" }) {
 
   const isSignup = mode === "signup";
 
+  function go(path: string) {
+    router.push(path);
+    router.refresh();
+  }
+
+  // Send first-time users through onboarding, returning users to the dashboard.
+  // "First time" = no scoring strategy has ever been built for this account.
+  async function routeAfterAuth() {
+    const done = await fetch("/api/profile")
+      .then((r) => r.json())
+      .then((d) => !!d.hasStrategy)
+      .catch(() => false);
+    go(done ? "/dashboard" : "/onboarding");
+  }
+
   async function submit(e: React.FormEvent) {
     e.preventDefault();
     setBusy(true);
@@ -21,28 +36,29 @@ export default function AuthForm({ mode }: { mode: "login" | "signup" }) {
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ email, password }),
     });
-    setBusy(false);
     if (!res.ok) {
+      setBusy(false);
       const data = await res.json().catch(() => ({}));
       setError(data.error || "Something went wrong");
       return;
     }
-    router.push("/dashboard");
-    router.refresh();
+    // New signups always onboard; logins onboard only if setup is incomplete.
+    if (isSignup) go("/onboarding");
+    else await routeAfterAuth();
   }
 
   async function continueAsGuest() {
     setBusy(true);
     setError(null);
     const res = await fetch("/api/auth/guest", { method: "POST" });
-    setBusy(false);
     if (!res.ok) {
+      setBusy(false);
       const data = await res.json().catch(() => ({}));
       setError(data.error || "Couldn't start a guest session");
       return;
     }
-    router.push("/dashboard");
-    router.refresh();
+    // Fresh guest account — always walk through onboarding.
+    go("/onboarding");
   }
 
   return (

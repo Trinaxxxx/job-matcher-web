@@ -15,6 +15,13 @@ export type Answers = {
   currency?: string;         // e.g. RM, SGD, USD
   seniority?: string;        // "intern" | "junior" | "mid" | "senior" | "lead" | "director"
   remoteOk?: boolean;
+  // --- Intent block: read only by the AI pass, not the keyword scorer. These
+  // capture what the candidate WANTS next (which the CV can't state) so Gemini
+  // can judge fit in the ambiguous mid-range, not just skill overlap.
+  careerGoal?: string;       // why looking now + what they want their next role to be
+  careerMove?: string;       // "same-field" | "change-industry" | "change-function" | "step-up" | "returning" | "first-role"
+  priorities?: string;       // what matters most, ideally ranked (comp, growth, WLB, mission…)
+  workStyle?: string;        // IC vs manager, company size, team/context preferences
 };
 
 export type Strategy = {
@@ -28,6 +35,24 @@ export type Strategy = {
   currency?: string;
   seniority?: string;
   remoteOk: boolean;
+  // AI-only signals. The keyword scorer ignores these; strategyDigest() surfaces
+  // them to Gemini as free-text intent so it can weigh fit beyond skill overlap.
+  intent?: {
+    careerGoal?: string;
+    careerMove?: string;
+    priorities?: string;
+    workStyle?: string;
+  };
+};
+
+// Human-readable labels for the career-move enum, used in the AI prompt.
+const CAREER_MOVE_LABELS: Record<string, string> = {
+  "same-field": "staying in their current field",
+  "change-industry": "changing to a new industry",
+  "change-function": "changing function/role type",
+  "step-up": "stepping up in seniority",
+  returning: "returning to work after a break",
+  "first-role": "seeking a first role / new graduate",
 };
 
 // Validation for the questionnaire body (H). Unknown keys are stripped and every
@@ -46,6 +71,10 @@ export const AnswersSchema = z
     currency: optStr(20),
     seniority: optStr(50),
     remoteOk: z.boolean().optional(),
+    careerGoal: optStr(1000),
+    careerMove: optStr(50),
+    priorities: optStr(500),
+    workStyle: optStr(500),
   })
   .strip() satisfies z.ZodType<Answers>;
 
@@ -101,6 +130,15 @@ export function buildStrategy(cvText: string, answers: Answers): Strategy {
 
   const minSalary = answers.minSalary ? parseInt(answers.minSalary.replace(/[^\d]/g, ""), 10) : undefined;
 
+  const careerMove = answers.careerMove?.trim();
+  const intentEntries = {
+    careerGoal: answers.careerGoal?.trim() || undefined,
+    careerMove: (careerMove && CAREER_MOVE_LABELS[careerMove]) || undefined,
+    priorities: answers.priorities?.trim() || undefined,
+    workStyle: answers.workStyle?.trim() || undefined,
+  };
+  const intent = Object.values(intentEntries).some(Boolean) ? intentEntries : undefined;
+
   return {
     titleKeywords,
     mustHaveKeywords,
@@ -112,5 +150,6 @@ export function buildStrategy(cvText: string, answers: Answers): Strategy {
     currency: answers.currency?.trim() || undefined,
     seniority: answers.seniority?.trim().toLowerCase() || undefined,
     remoteOk: !!answers.remoteOk,
+    intent,
   };
 }

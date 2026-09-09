@@ -48,7 +48,7 @@ export async function POST(req: NextRequest) {
 
   let raw;
   try {
-    raw = await scrapeJobs(token, { keywords, location, maxResults: 50 });
+    raw = await scrapeJobs(token, { keywords, location, maxResults: 20 });
   } catch (e) {
     console.error("[search] scrape failed:", e);
     return NextResponse.json(

@@ -12,6 +12,10 @@ type Answers = {
   currency?: string;
   seniority?: string;
   remoteOk?: boolean;
+  careerGoal?: string;
+  careerMove?: string;
+  priorities?: string;
+  workStyle?: string;
 };
 
 const FIELD = "rounded border border-black/15 px-3 py-2 w-full dark:border-white/20 dark:bg-transparent";
@@ -40,7 +44,7 @@ export default function ProfileForm() {
       .catch(() => {});
   }, []);
 
-  const set = (k: keyof Answers) => (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>) =>
+  const set = (k: keyof Answers) => (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement>) =>
     setAnswers((a) => ({ ...a, [k]: e.target.value }));
 
   async function uploadCv(e: React.ChangeEvent<HTMLInputElement>) {
@@ -156,9 +160,49 @@ export default function ProfileForm() {
           </div>
         </section>
 
+        {/* Intent — AI-only signals */}
+        <section className="rounded-lg border border-black/10 p-5 dark:border-white/15">
+          <h2 className="font-medium">3. What you want next</h2>
+          <p className={HINT}>
+            Optional, but recommended. Your CV shows what you&apos;ve done — these tell the AI matcher what
+            you&apos;re looking for, so it can judge fit beyond skill overlap.
+          </p>
+          <div className="mt-4 grid gap-4">
+            <div>
+              <label className={LABEL}>Your goal for the next role</label>
+              <p className={HINT}>Why you&apos;re looking now, and what you want your next role to be.</p>
+              <textarea className={FIELD} rows={3} value={answers.careerGoal ?? ""} onChange={set("careerGoal")}
+                placeholder="Looking to move from delivery into product strategy at a company where I own a roadmap end-to-end." />
+            </div>
+            <div>
+              <label className={LABEL}>Career move</label>
+              <select className={FIELD} value={answers.careerMove ?? ""} onChange={set("careerMove")}>
+                <option value="">Not specified</option>
+                <option value="same-field">Staying in my field</option>
+                <option value="change-industry">Changing industry</option>
+                <option value="change-function">Changing function / role type</option>
+                <option value="step-up">Stepping up in seniority</option>
+                <option value="returning">Returning to work after a break</option>
+                <option value="first-role">First role / new graduate</option>
+              </select>
+            </div>
+            <div>
+              <label className={LABEL}>What matters most</label>
+              <p className={HINT}>Ideally ranked — the AI weighs these against each job.</p>
+              <input className={FIELD} value={answers.priorities ?? ""} onChange={set("priorities")}
+                placeholder="growth, then compensation, then work-life balance" />
+            </div>
+            <div>
+              <label className={LABEL}>Preferred work style</label>
+              <input className={FIELD} value={answers.workStyle ?? ""} onChange={set("workStyle")}
+                placeholder="individual contributor, small team, startup over corporate" />
+            </div>
+          </div>
+        </section>
+
         {/* Apify key */}
         <section className="rounded-lg border border-black/10 p-5 dark:border-white/15">
-          <h2 className="font-medium">3. Apify API key</h2>
+          <h2 className="font-medium">4. Apify API key</h2>
           <p className={HINT}>
             Your own key from{" "}
             <a href="https://apify.com/" target="_blank" rel="noopener noreferrer"
