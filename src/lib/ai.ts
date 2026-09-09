@@ -23,6 +23,10 @@ import type { RawJob, ScoreResult } from "./scoring";
 // env without a redeploy of logic.
 const REVIEW_MAX_JOBS = Number(process.env.GEMINI_REVIEW_MAX_JOBS ?? 25);
 const REVIEW_MIN_SCORE = Number(process.env.GEMINI_REVIEW_MIN_SCORE ?? 70);
+// When a CV is present the semantic read is far more valuable, and keyword
+// scores understate CV-only fits — so lower the gate so those jobs aren't
+// starved of the AI pass.
+const REVIEW_MIN_SCORE_WITH_CV = Number(process.env.GEMINI_REVIEW_MIN_SCORE_CV ?? 55);
 const MODEL = process.env.GEMINI_MODEL ?? "gemini-2.5-flash";
 // Cap JD text sent to the model to keep token cost/latency bounded.
 const MAX_JD_CHARS = 6000;
@@ -79,9 +83,11 @@ export async function geminiRescore(
   if (!aiEnabled()) return jobs; // keyword-only mode
 
   // Pick the top roles the cheap keyword pass already rates highly — those are
-  // the only ones worth a paid deep read.
+  // the only ones worth a paid deep read. With a CV on file, lower the bar so
+  // strong CV-fits the keyword pass underrates still get read.
+  const minScore = (cvText || "").trim() ? REVIEW_MIN_SCORE_WITH_CV : REVIEW_MIN_SCORE;
   const candidates = jobs
-    .filter((j) => j.score >= REVIEW_MIN_SCORE && (j.description ?? "").trim().length > 0)
+    .filter((j) => j.score >= minScore && (j.description ?? "").trim().length > 0)
     .sort((a, b) => b.score - a.score)
     .slice(0, REVIEW_MAX_JOBS);
 

@@ -39,10 +39,13 @@ export async function POST(req: NextRequest) {
   const strategy = profile.strategy as unknown as Strategy;
   const token = decrypt(user.apifyKeyEnc);
 
-  // Build the search query from the user's target titles + preferred locations.
-  const keywords = strategy.titleKeywords.length
-    ? strategy.titleKeywords.slice(0, 6).join(" OR ")
-    : "manager";
+  // Build the search query from the user's target titles, falling back to
+  // CV-derived phrases (searchKeywords) so a CV-only profile isn't scraped as a
+  // generic "manager". Older stored strategies may predate searchKeywords.
+  const queryTerms = strategy.searchKeywords?.length
+    ? strategy.searchKeywords
+    : strategy.titleKeywords;
+  const keywords = queryTerms.length ? queryTerms.slice(0, 6).join(" OR ") : "manager";
   // Scrape a single location only — one city or country. Extra locations are ignored.
   const location = strategy.locations[0] ?? "Remote";
 

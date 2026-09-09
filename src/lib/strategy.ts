@@ -28,6 +28,9 @@ export type Strategy = {
   titleKeywords: string[];
   mustHaveKeywords: string[];
   niceToHaveKeywords: string[];
+  // Terms used to build the scrape query. Falls back to CV-derived phrases when
+  // the user gave no target titles. Optional for back-compat with stored strategies.
+  searchKeywords?: string[];
   excludeKeywords: string[];
   locations: string[];
   excludeLocations: string[];
@@ -98,35 +101,85 @@ function splitList(s?: string): string[] {
     .filter(Boolean);
 }
 
-// Pull supplementary keywords from CV text: frequent, meaningful multi-char tokens.
-function keywordsFromCv(cvText: string, limit = 20): string[] {
+// Extract confident keyphrases from CV text, most salient first. Unlike plain
+// token counting, this also captures adjacent-word BIGRAMS ("product management",
+// "machine learning", "data analysis") that single-token counting shattered into
+// generic fragments. Bigrams are weighted higher (more specific), and a unigram
+// already covered by a kept bigram is dropped to avoid double-counting.
+function keyphrasesFromCv(cvText: string, limit = 24): string[] {
   if (!cvText) return [];
-  const counts = new Map<string, number>();
-  const tokens = cvText.toLowerCase().match(/[a-z][a-z+.#-]{2,}/g) || [];
-  for (const t of tokens) {
-    if (STOPWORDS.has(t)) continue;
-    counts.set(t, (counts.get(t) || 0) + 1);
+  const raw = new Map<string, number>(); // raw occurrence counts
+  // Split on punctuation/newlines so bigrams don't span unrelated fragments.
+  const segments = cvText.toLowerCase().split(/[.,\n;:|/•\t()[\]]+/);
+  for (const seg of segments) {
+    const words = (seg.match(/[a-z][a-z+.#-]{2,}/g) || []).filter((w) => !STOPWORDS.has(w));
+    for (let i = 0; i < words.length; i++) {
+      raw.set(words[i], (raw.get(words[i]) || 0) + 1);
+      const next = words[i + 1];
+      if (next && next !== words[i] && !STOPWORDS.has(next)) {
+        const bigram = `${words[i]} ${next}`;
+        raw.set(bigram, (raw.get(bigram) || 0) + 1);
+      }
+    }
   }
-  return [...counts.entries()]
+  // Require ≥2 occurrences for confidence (a term a real CV leans on recurs), and
+  // rank by a bigram-weighted score so specific multi-word phrases surface first.
+  const weight = (k: string, n: number) => n * (k.includes(" ") ? 2 : 1);
+  return [...raw.entries()]
     .filter(([, n]) => n >= 2)
-    .sort((a, b) => b[1] - a[1])
+    .sort((a, b) => weight(b[0], b[1]) - weight(a[0], a[1]))
     .slice(0, limit)
-    .map(([w]) => w);
+    .map(([k]) => k);
+}
+
+// Infer a seniority FLOOR from CV text, used only when the questionnaire leaves
+// seniority blank. Deliberately conservative: it exists to stop clearly-senior
+// candidates being shown intern/junior roles, and must NOT misfire on entry-level
+// CVs. So it keys off unambiguous executive titles (unlikely in a junior CV) and
+// otherwise stated years of experience — never soft words like "senior" or "lead"
+// that appear innocently in a new grad's CV ("senior year", "club lead").
+function seniorityFromCv(cvText: string): string | undefined {
+  if (!cvText) return undefined;
+  const t = cvText.toLowerCase();
+  if (/\b(chief|c-level|vice president|vp|head of|director|principal)\b/.test(t)) return "director";
+  let maxYears = 0;
+  for (const m of t.matchAll(/(\d{1,2})\s*\+?\s*years?/g)) {
+    const y = parseInt(m[1], 10);
+    if (y > maxYears && y <= 50) maxYears = y;
+  }
+  if (maxYears >= 8) return "senior";
+  if (maxYears >= 3) return "mid";
+  return undefined;
 }
 
 export function buildStrategy(cvText: string, answers: Answers): Strategy {
   const titleKeywords = splitList(answers.targetTitles);
   const skills = splitList(answers.skills);
   const industries = splitList(answers.industries);
-  const cvKeywords = keywordsFromCv(cvText);
+  const cvPhrases = keyphrasesFromCv(cvText);
 
-  // must-haves: explicit skills + industries (strong signal from the user).
-  const mustHaveKeywords = Array.from(new Set([...skills, ...industries]));
+  // Explicit questionnaire skills + industries are always primary must-haves.
+  const explicitMust = Array.from(new Set([...skills, ...industries]));
 
-  // nice-to-haves: CV-derived terms not already listed explicitly.
-  const niceToHaveKeywords = cvKeywords.filter(
+  // Promote the strongest CV-derived phrases to must-have so the CV can actually
+  // lift a matching job — previously the CV only fed nice-to-haves (max +10),
+  // which couldn't clear the AI-review gate. The remainder stay nice-to-have.
+  const cvMust = cvPhrases
+    .filter((k) => !explicitMust.includes(k) && !titleKeywords.includes(k))
+    .slice(0, 8);
+  const mustHaveKeywords = Array.from(new Set([...explicitMust, ...cvMust]));
+
+  const niceToHaveKeywords = cvPhrases.filter(
     (k) => !mustHaveKeywords.includes(k) && !titleKeywords.includes(k)
   );
+
+  // Terms that drive the actual job scrape. Prefer the user's target titles;
+  // otherwise fall back to the CV (bigrams first — they read like role names /
+  // concrete skills) so a CV-only user isn't searched as a generic "manager".
+  const cvBigrams = cvPhrases.filter((k) => k.includes(" "));
+  const searchKeywords = titleKeywords.length
+    ? titleKeywords
+    : (cvBigrams.length ? cvBigrams : cvPhrases).slice(0, 6);
 
   const minSalary = answers.minSalary ? parseInt(answers.minSalary.replace(/[^\d]/g, ""), 10) : undefined;
 
@@ -143,12 +196,13 @@ export function buildStrategy(cvText: string, answers: Answers): Strategy {
     titleKeywords,
     mustHaveKeywords,
     niceToHaveKeywords,
+    searchKeywords,
     excludeKeywords: splitList(answers.dealbreakers),
     locations: splitList(answers.locations),
     excludeLocations: splitList(answers.excludeLocations),
     minSalary: Number.isFinite(minSalary as number) ? minSalary : undefined,
     currency: answers.currency?.trim() || undefined,
-    seniority: answers.seniority?.trim().toLowerCase() || undefined,
+    seniority: answers.seniority?.trim().toLowerCase() || seniorityFromCv(cvText) || undefined,
     remoteOk: !!answers.remoteOk,
     intent,
   };
