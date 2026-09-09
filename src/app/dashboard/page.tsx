@@ -20,44 +20,96 @@ export default async function Dashboard() {
   const hasApify = !!user?.apifyKeyEnc;
   const ready = hasCv && hasAnswers && hasApify;
 
-  const Check = ({ ok, label, href }: { ok: boolean; label: string; href: string }) => (
-    <li className="flex items-center gap-3">
-      <span className={ok ? "text-green-600" : "text-zinc-400"}>{ok ? "✓" : "○"}</span>
-      <Link href={href} className="underline-offset-2 hover:underline">{label}</Link>
+  const steps = [
+    { ok: hasCv, label: "Upload your CV", hint: "So matches weigh your real background." },
+    { ok: hasAnswers, label: "Answer the questionnaire", hint: "Titles, skills, and what you want next." },
+    { ok: hasApify, label: "Add your Apify API key", hint: "Runs each search on your own account." },
+  ];
+  const done = steps.filter((s) => s.ok).length;
+
+  const Check = ({ ok, label, hint }: { ok: boolean; label: string; hint: string }) => (
+    <li>
+      <Link
+        href="/profile"
+        className="group flex items-start gap-3 rounded-xl px-3 py-2.5 transition-colors hover:bg-surface-2"
+      >
+        <span
+          aria-hidden
+          className={
+            "mt-0.5 grid h-5 w-5 shrink-0 place-items-center rounded-full text-[11px] font-bold " +
+            (ok
+              ? "bg-success text-white"
+              : "border border-subtle-strong text-muted-2 group-hover:border-accent group-hover:text-accent")
+          }
+        >
+          {ok ? "✓" : ""}
+        </span>
+        <span>
+          <span className={"block text-sm font-medium " + (ok ? "text-muted line-through" : "")}>{label}</span>
+          <span className="block text-xs text-muted">{hint}</span>
+        </span>
+      </Link>
     </li>
   );
 
   return (
     <>
       <Nav />
-      <main className="mx-auto w-full max-w-5xl px-4 py-8">
-        <h1 className="text-2xl font-semibold">Dashboard</h1>
-        <p className="mt-1 text-sm text-zinc-500">{user?.email}</p>
+      <main className="mx-auto w-full max-w-5xl px-4 py-10">
+        <header>
+          <p className="text-sm text-muted">{user?.email}</p>
+          <h1 className="mt-1 text-3xl font-semibold">Dashboard</h1>
+        </header>
 
-        <section className="mt-6 rounded-lg border border-black/10 p-5 dark:border-white/15">
-          <h2 className="font-medium">Setup checklist</h2>
-          <ul className="mt-3 flex flex-col gap-2 text-sm">
-            <Check ok={hasCv} label="Upload your CV" href="/profile" />
-            <Check ok={hasAnswers} label="Answer the questionnaire" href="/profile" />
-            <Check ok={hasApify} label="Add your Apify API key" href="/profile" />
-          </ul>
-        </section>
+        <div className="mt-8 grid gap-5 md:grid-cols-5">
+          {/* Setup checklist */}
+          <section className="card card-lift p-6 md:col-span-3">
+            <div className="flex items-baseline justify-between">
+              <h2 className="font-display text-lg font-semibold">Setup checklist</h2>
+              <span className="text-sm text-muted tnum">{done}/{steps.length}</span>
+            </div>
+            <div className="mt-3 h-1.5 overflow-hidden rounded-full bg-surface-2">
+              <div
+                className="h-full rounded-full bg-accent transition-[width] duration-500"
+                style={{ width: `${(done / steps.length) * 100}%` }}
+              />
+            </div>
+            <ul className="mt-4 flex flex-col gap-1">
+              {steps.map((s) => (
+                <Check key={s.label} {...s} />
+              ))}
+            </ul>
+          </section>
 
-        <section className="mt-6 rounded-lg border border-black/10 p-5 dark:border-white/15">
-          <h2 className="font-medium">Find matches</h2>
-          <p className="mt-1 text-sm text-zinc-500">
-            Scrapes fresh jobs with your Apify key, scores them against your profile, and saves the matches.
+          {/* Saved matches stat */}
+          <section className="card card-lift flex flex-col justify-between p-6 md:col-span-2">
+            <div>
+              <h2 className="font-display text-lg font-semibold">Saved matches</h2>
+              <p className="mt-3 font-display text-5xl font-semibold tracking-tight tnum">{jobCount}</p>
+              <p className="mt-1 text-sm text-muted">
+                {jobCount === 1 ? "role saved" : "roles saved"} to your list.
+              </p>
+            </div>
+            <Link href="/results" className="link mt-6 text-sm font-medium">
+              View results →
+            </Link>
+          </section>
+        </div>
+
+        {/* Run search */}
+        <section className="card card-lift mt-5 p-6">
+          <h2 className="font-display text-lg font-semibold">Find matches</h2>
+          <p className="mt-1 max-w-prose text-sm text-muted">
+            Scrapes fresh jobs with your Apify key, scores them against your profile with a zero-cost keyword pass,
+            then gives the top roles an AI read.
           </p>
-          <div className="mt-4">
+          <div className="mt-5">
             <RunSearch disabled={!ready} />
           </div>
-          {!ready && <p className="mt-2 text-sm text-amber-600">Finish the checklist above to enable search.</p>}
+          {!ready && (
+            <p className="mt-3 text-sm text-warning">Finish the checklist above to enable search.</p>
+          )}
         </section>
-
-        <p className="mt-6 text-sm text-zinc-500">
-          You have <strong>{jobCount}</strong> saved {jobCount === 1 ? "match" : "matches"}.{" "}
-          <Link href="/results" className="underline">View results →</Link>
-        </p>
       </main>
     </>
   );

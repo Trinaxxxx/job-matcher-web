@@ -18,9 +18,9 @@ type Answers = {
   workStyle?: string;
 };
 
-const FIELD = "rounded border border-black/15 px-3 py-2 w-full dark:border-white/20 dark:bg-transparent";
-const LABEL = "text-sm font-medium";
-const HINT = "text-xs text-zinc-500";
+const FIELD = "field";
+const LABEL = "label";
+const HINT = "hint mt-0.5";
 
 export default function ProfileForm() {
   const [answers, setAnswers] = useState<Answers>({});
@@ -82,18 +82,23 @@ export default function ProfileForm() {
   return (
     <div className="mt-6 flex flex-col gap-8">
       {/* CV upload */}
-      <section className="rounded-lg border border-black/10 p-5 dark:border-white/15">
-        <h2 className="font-medium">1. Your CV</h2>
+      <section className="card card-lift p-6">
+        <h2 className="font-display text-lg font-semibold">1. Your CV</h2>
         <p className={HINT}>PDF, DOCX, or TXT (max 5 MB). We extract the text to match your background.</p>
-        <input type="file" accept=".pdf,.docx,.txt" onChange={uploadCv} className="mt-3 text-sm" />
+        <input
+          type="file"
+          accept=".pdf,.docx,.txt"
+          onChange={uploadCv}
+          className="mt-3 block w-full text-sm text-muted file:mr-3 file:cursor-pointer file:rounded-lg file:border-0 file:bg-accent-soft file:px-3 file:py-2 file:text-sm file:font-medium file:text-accent hover:file:brightness-95"
+        />
         {cvFileName && <p className="mt-2 text-sm">Current: <strong>{cvFileName}</strong>{hasCvText ? " ✓" : ""}</p>}
-        {cvMsg && <p className="mt-1 text-sm text-green-600">{cvMsg}</p>}
+        {cvMsg && <p className="mt-1 text-sm text-success">{cvMsg}</p>}
       </section>
 
       {/* Questionnaire */}
       <form onSubmit={save} className="flex flex-col gap-8">
-        <section className="rounded-lg border border-black/10 p-5 dark:border-white/15">
-          <h2 className="font-medium">2. Questionnaire</h2>
+        <section className="card card-lift p-6">
+          <h2 className="font-display text-lg font-semibold">2. Questionnaire</h2>
           <div className="mt-4 grid gap-4">
             <div>
               <label className={LABEL}>Target job titles</label>
@@ -152,8 +157,8 @@ export default function ProfileForm() {
                 </select>
               </div>
             </div>
-            <label className="flex items-center gap-2 text-sm">
-              <input type="checkbox" checked={!!answers.remoteOk}
+            <label className="flex cursor-pointer items-center gap-2 text-sm">
+              <input type="checkbox" checked={!!answers.remoteOk} className="accent-[var(--accent)]"
                 onChange={(e) => setAnswers((a) => ({ ...a, remoteOk: e.target.checked }))} />
               Open to remote roles
             </label>
@@ -161,8 +166,8 @@ export default function ProfileForm() {
         </section>
 
         {/* Intent — AI-only signals */}
-        <section className="rounded-lg border border-black/10 p-5 dark:border-white/15">
-          <h2 className="font-medium">3. What you want next</h2>
+        <section className="card card-lift p-6">
+          <h2 className="font-display text-lg font-semibold">3. What you want next</h2>
           <p className={HINT}>
             Optional, but recommended. Your CV shows what you&apos;ve done — these tell the AI matcher what
             you&apos;re looking for, so it can judge fit beyond skill overlap.
@@ -201,14 +206,14 @@ export default function ProfileForm() {
         </section>
 
         {/* Apify key */}
-        <section className="rounded-lg border border-black/10 p-5 dark:border-white/15">
-          <h2 className="font-medium">4. Apify API key</h2>
+        <section className="card card-lift p-6">
+          <h2 className="font-display text-lg font-semibold">4. Apify API key</h2>
           <p className={HINT}>
             Your own key from{" "}
             <a href="https://apify.com/" target="_blank" rel="noopener noreferrer"
-              className="underline">apify.com</a>{" "}
+              className="link">apify.com</a>{" "}
             (Settings → API &amp; Integrations). Stored encrypted; used only for your searches.
-            {hasApifyKey && <span className="text-green-600"> A key is currently saved ✓</span>}
+            {hasApifyKey && <span className="text-success"> A key is currently saved ✓</span>}
           </p>
           <input className={FIELD + " mt-3"} type="password" value={apifyKey}
             onChange={(e) => setApifyKey(e.target.value)}
@@ -216,10 +221,10 @@ export default function ProfileForm() {
         </section>
 
         <div className="flex items-center gap-3">
-          <button disabled={busy} className="rounded bg-black px-5 py-2 font-medium text-white disabled:opacity-50 dark:bg-white dark:text-black">
+          <button disabled={busy} className="btn btn-primary px-5 py-2.5">
             {busy ? "Saving…" : "Save profile"}
           </button>
-          {saveMsg && <span className="text-sm text-green-600">{saveMsg}</span>}
+          {saveMsg && <span className="text-sm text-success">{saveMsg}</span>}
         </div>
       </form>
     </div>

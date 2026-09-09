@@ -1,18 +1,53 @@
+"use client";
 import Link from "next/link";
-import { getUserId } from "@/lib/auth";
+import { usePathname } from "next/navigation";
 import LogoutButton from "./LogoutButton";
 
-export default async function Nav() {
-  const userId = await getUserId();
-  if (!userId) return null;
+const LINKS = [
+  { href: "/dashboard", label: "Dashboard" },
+  { href: "/profile", label: "Profile" },
+  { href: "/results", label: "Results" },
+];
+
+export default function Nav() {
+  const pathname = usePathname();
+
   return (
-    <header className="border-b border-black/10 dark:border-white/15">
-      <nav className="mx-auto flex max-w-5xl items-center gap-6 px-4 py-3 text-sm">
-        <Link href="/dashboard" className="font-semibold">Job Matcher</Link>
-        <Link href="/dashboard" className="text-zinc-600 hover:text-black dark:text-zinc-400 dark:hover:text-white">Dashboard</Link>
-        <Link href="/profile" className="text-zinc-600 hover:text-black dark:text-zinc-400 dark:hover:text-white">Profile</Link>
-        <Link href="/results" className="text-zinc-600 hover:text-black dark:text-zinc-400 dark:hover:text-white">Results</Link>
-        <div className="ml-auto"><LogoutButton /></div>
+    <header className="sticky top-0 z-10 border-b border-subtle bg-background/80 backdrop-blur-md">
+      <nav className="mx-auto flex max-w-6xl items-center gap-1 px-4 py-3 text-sm sm:gap-2">
+        <Link
+          href="/dashboard"
+          className="mr-3 flex items-center gap-2 font-display text-base font-semibold tracking-tight"
+        >
+          <span
+            aria-hidden
+            className="grid h-6 w-6 place-items-center rounded-md bg-accent text-[13px] font-bold text-[var(--accent-fg)]"
+          >
+            jm
+          </span>
+          Job Matcher
+        </Link>
+        {LINKS.map(({ href, label }) => {
+          const active = pathname === href;
+          return (
+            <Link
+              key={href}
+              href={href}
+              aria-current={active ? "page" : undefined}
+              className={
+                "rounded-md px-3 py-1.5 transition-colors " +
+                (active
+                  ? "bg-accent-soft font-medium text-accent"
+                  : "text-muted hover:bg-surface-2 hover:text-foreground")
+              }
+            >
+              {label}
+            </Link>
+          );
+        })}
+        <div className="ml-auto">
+          <LogoutButton />
+        </div>
       </nav>
     </header>
   );

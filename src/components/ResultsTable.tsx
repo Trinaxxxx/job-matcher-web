@@ -21,10 +21,10 @@ type Job = {
 const STATUSES = ["New", "Interested", "Applied", "Rejected"];
 
 function scoreColor(score: number) {
-  if (score >= 80) return "bg-green-100 text-green-800 dark:bg-green-900/40 dark:text-green-300";
-  if (score >= 65) return "bg-lime-100 text-lime-800 dark:bg-lime-900/40 dark:text-lime-300";
-  if (score >= 50) return "bg-amber-100 text-amber-800 dark:bg-amber-900/40 dark:text-amber-300";
-  return "bg-zinc-100 text-zinc-600 dark:bg-zinc-800 dark:text-zinc-400";
+  if (score >= 80) return "bg-success-soft text-success";
+  if (score >= 65) return "bg-accent-soft text-accent";
+  if (score >= 50) return "bg-[var(--warning)]/12 text-warning";
+  return "bg-surface-2 text-muted";
 }
 
 export default function ResultsTable() {
@@ -54,84 +54,116 @@ export default function ResultsTable() {
   }
 
   const controls = (anyAi || strongOnly) ? (
-    <label className="mt-4 flex items-center gap-2 text-sm text-zinc-600 dark:text-zinc-400">
-      <input type="checkbox" checked={strongOnly} onChange={(e) => setStrongOnly(e.target.checked)} />
+    <label className="mt-6 inline-flex cursor-pointer items-center gap-2 text-sm text-muted">
+      <input
+        type="checkbox"
+        checked={strongOnly}
+        onChange={(e) => setStrongOnly(e.target.checked)}
+        className="accent-[var(--accent)]"
+      />
       Strong fits only (AI score 85+)
     </label>
   ) : null;
 
-  if (loading) return <><p className="mt-8 text-sm text-zinc-500">Loading…</p></>;
+  if (loading)
+    return (
+      <div className="card mt-6 overflow-hidden">
+        {Array.from({ length: 6 }).map((_, i) => (
+          <div key={i} className="flex items-center gap-4 border-b border-subtle px-4 py-4 last:border-0">
+            <div className="h-7 w-10 animate-pulse rounded bg-surface-2" />
+            <div className="flex-1 space-y-2">
+              <div className="h-3.5 w-1/3 animate-pulse rounded bg-surface-2" />
+              <div className="h-3 w-1/4 animate-pulse rounded bg-surface-2" />
+            </div>
+            <div className="h-7 w-24 animate-pulse rounded bg-surface-2" />
+          </div>
+        ))}
+      </div>
+    );
   if (!jobs.length)
     return (
       <>
         {controls}
-        <p className="mt-8 text-sm text-zinc-500">
-          {strongOnly ? "No jobs scored 85+ yet. Uncheck the filter to see all matches." : "No matches yet. Run a search from the dashboard."}
-        </p>
+        <div className="card mt-6 px-6 py-16 text-center">
+          <div aria-hidden className="mx-auto grid h-12 w-12 place-items-center rounded-full bg-accent-soft text-accent">
+            <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+              <circle cx="11" cy="11" r="7" />
+              <path d="m20 20-3.5-3.5" />
+            </svg>
+          </div>
+          <p className="mt-4 text-sm text-muted">
+            {strongOnly
+              ? "No jobs scored 85+ yet. Uncheck the filter to see all matches."
+              : "No matches yet. Run a search from the dashboard to get started."}
+          </p>
+        </div>
       </>
     );
 
   return (
     <>
     {controls}
-    <div className="mt-6 overflow-x-auto rounded-lg border border-black/10 dark:border-white/15">
+    <div className="card mt-4 overflow-x-auto">
       <table className="w-full text-sm">
-        <thead className="border-b border-black/10 bg-black/[.02] text-left dark:border-white/15 dark:bg-white/[.03]">
-          <tr>
-            <th className="px-3 py-2">Fit</th>
-            <th className="px-3 py-2">Role</th>
-            <th className="px-3 py-2">Location</th>
-            <th className="px-3 py-2">Source</th>
-            <th className="px-3 py-2">Status</th>
+        <thead className="border-b border-subtle text-left">
+          <tr className="text-xs font-medium uppercase tracking-wide text-muted-2">
+            <th className="px-4 py-3 font-medium">Fit</th>
+            <th className="px-4 py-3 font-medium">Role</th>
+            <th className="px-4 py-3 font-medium">Location</th>
+            <th className="px-4 py-3 font-medium">Source</th>
+            <th className="px-4 py-3 font-medium">Status</th>
           </tr>
         </thead>
         <tbody>
           {jobs.map((j) => (
             <Fragment key={j.id}>
-              <tr className="border-b border-black/5 align-top dark:border-white/10">
-                <td className="px-3 py-2">
+              <tr className="border-b border-subtle align-top transition-colors last:border-0 hover:bg-surface-2">
+                <td className="px-4 py-3">
                   {j.aiScored && typeof j.aiScore === "number" ? (
                     <>
-                      <span className={`inline-block rounded px-2 py-0.5 font-semibold ${scoreColor(j.aiScore)}`} title="Gemini fit score">{j.aiScore}</span>
-                      <span className="ml-1 text-[10px] text-purple-500" title="AI-reviewed">AI</span>
-                      <div className="mt-0.5 text-[10px] text-zinc-400" title="Keyword score">kw {j.score}</div>
+                      <span className={`badge ${scoreColor(j.aiScore)}`} title="Gemini fit score">{j.aiScore}</span>
+                      <span className="ml-1 text-[10px] font-semibold text-accent" title="AI-reviewed">AI</span>
+                      <div className="mt-1 text-[10px] text-muted-2 tnum" title="Keyword score">kw {j.score}</div>
                     </>
                   ) : (
-                    <span className={`inline-block rounded px-2 py-0.5 font-semibold ${scoreColor(j.score)}`} title="Keyword score">{j.score}</span>
+                    <span className={`badge ${scoreColor(j.score)}`} title="Keyword score">{j.score}</span>
                   )}
                 </td>
-                <td className="px-3 py-2">
+                <td className="px-4 py-3">
                   <div className="font-medium">
                     {j.url ? (
-                      <a href={j.url} target="_blank" rel="noopener noreferrer" className="text-blue-400 underline hover:text-blue-300">{j.title}</a>
+                      <a href={j.url} target="_blank" rel="noopener noreferrer" className="link decoration-transparent hover:decoration-current">{j.title}</a>
                     ) : j.title}
                   </div>
-                  <div className="text-xs text-zinc-500">
+                  <div className="mt-0.5 text-xs text-muted">
                     {j.company}{j.salary ? ` · ${j.salary}` : ""}
                     {j.aiSummary || j.reasons?.length ? (
-                      <button onClick={() => setOpen(open === j.id ? null : j.id)} className="ml-2 underline">
+                      <button
+                        onClick={() => setOpen(open === j.id ? null : j.id)}
+                        className="ml-2 font-medium text-accent hover:underline"
+                      >
                         {open === j.id ? "hide why" : "why?"}
                       </button>
                     ) : null}
                   </div>
                 </td>
-                <td className="px-3 py-2 text-zinc-600 dark:text-zinc-400">{j.location}</td>
-                <td className="px-3 py-2 text-zinc-600 dark:text-zinc-400">{j.source}</td>
-                <td className="px-3 py-2">
+                <td className="px-4 py-3 text-muted">{j.location}</td>
+                <td className="px-4 py-3 text-muted">{j.source}</td>
+                <td className="px-4 py-3">
                   <select
                     value={j.status}
                     onChange={(e) => setStatus(j.id, e.target.value)}
-                    className="rounded border border-black/15 px-2 py-1 dark:border-white/20 dark:bg-transparent"
+                    className="field !w-auto !py-1.5 !text-sm"
                   >
                     {STATUSES.map((s) => <option key={s} value={s}>{s}</option>)}
                   </select>
                 </td>
               </tr>
               {open === j.id && (j.aiSummary || j.reasons?.length) ? (
-                <tr className="border-b border-black/5 dark:border-white/10">
-                  <td colSpan={5} className="bg-black/[.02] px-3 py-2 text-xs text-zinc-600 dark:bg-white/[.03] dark:text-zinc-400">
+                <tr className="border-b border-subtle last:border-0">
+                  <td colSpan={5} className="bg-surface-2 px-4 py-3 text-xs text-muted">
                     {j.aiSummary ? (
-                      <p className="mb-2"><span className="font-semibold text-purple-500">AI: </span>{j.aiSummary}</p>
+                      <p className="mb-2"><span className="font-semibold text-accent">AI: </span>{j.aiSummary}</p>
                     ) : null}
                     {j.reasons?.length ? (
                       <ul className="list-disc pl-5">{j.reasons.map((r, i) => <li key={i}>{r}</li>)}</ul>

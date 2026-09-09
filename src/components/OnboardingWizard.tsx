@@ -23,9 +23,9 @@ type Answers = {
   workStyle?: string;
 };
 
-const FIELD = "rounded border border-black/15 px-3 py-2 w-full dark:border-white/20 dark:bg-transparent";
-const LABEL = "text-sm font-medium";
-const HINT = "text-xs text-zinc-500";
+const FIELD = "field";
+const LABEL = "label";
+const HINT = "hint mt-0.5";
 
 const STEPS = ["Your CV", "Questionnaire", "Apify key"];
 
@@ -98,8 +98,8 @@ export default function OnboardingWizard() {
 
   return (
     <div className="mx-auto w-full max-w-2xl px-4 py-10">
-      <h1 className="text-2xl font-semibold">Let&apos;s set you up</h1>
-      <p className="mt-1 text-sm text-zinc-500">
+      <h1 className="text-3xl font-semibold">Let&apos;s set you up</h1>
+      <p className="mt-2 text-sm text-muted">
         Three quick steps and you&apos;ll be matching jobs. You can skip any of them and finish later.
       </p>
 
@@ -109,30 +109,35 @@ export default function OnboardingWizard() {
           <li key={label} className="flex flex-1 items-center gap-2">
             <span className={
               "flex h-6 w-6 shrink-0 items-center justify-center rounded-full text-[11px] font-medium " +
-              (i < step ? "bg-green-600 text-white" : i === step ? "bg-black text-white dark:bg-white dark:text-black" : "bg-black/10 text-zinc-500 dark:bg-white/15")
+              (i < step ? "bg-success text-white" : i === step ? "bg-accent text-[var(--accent-fg)]" : "bg-surface-2 text-muted-2")
             }>
               {i < step ? "✓" : i + 1}
             </span>
-            <span className={i === step ? "font-medium" : "text-zinc-500"}>{label}</span>
-            {i < STEPS.length - 1 && <span className="h-px flex-1 bg-black/10 dark:bg-white/15" />}
+            <span className={i === step ? "font-medium" : "text-muted"}>{label}</span>
+            {i < STEPS.length - 1 && <span className="h-px flex-1 bg-[var(--border)]" />}
           </li>
         ))}
       </ol>
 
-      <div className="mt-6 rounded-lg border border-black/10 p-5 dark:border-white/15">
+      <div className="mt-6 card card-lift p-6">
         {step === 0 && (
           <div>
-            <h2 className="font-medium">Upload your CV</h2>
+            <h2 className="font-display text-lg font-semibold">Upload your CV</h2>
             <p className={HINT}>PDF, DOCX, or TXT (max 5 MB). We extract the text to match your background — skip if you&apos;d rather match on the questionnaire alone.</p>
-            <input type="file" accept=".pdf,.docx,.txt" onChange={uploadCv} className="mt-3 text-sm" />
+            <input
+              type="file"
+              accept=".pdf,.docx,.txt"
+              onChange={uploadCv}
+              className="mt-3 block w-full text-sm text-muted file:mr-3 file:cursor-pointer file:rounded-lg file:border-0 file:bg-accent-soft file:px-3 file:py-2 file:text-sm file:font-medium file:text-accent hover:file:brightness-95"
+            />
             {cvFileName && <p className="mt-2 text-sm">Current: <strong>{cvFileName}</strong> ✓</p>}
-            {cvMsg && <p className="mt-1 text-sm text-green-600">{cvMsg}</p>}
+            {cvMsg && <p className="mt-1 text-sm text-success">{cvMsg}</p>}
           </div>
         )}
 
         {step === 1 && (
           <div className="grid gap-4">
-            <h2 className="font-medium">Tell us what you&apos;re looking for</h2>
+            <h2 className="font-display text-lg font-semibold">Tell us what you&apos;re looking for</h2>
             <div>
               <label className={LABEL}>Target job titles</label>
               <p className={HINT}>Comma-separated. These become your search terms.</p>
@@ -185,12 +190,12 @@ export default function OnboardingWizard() {
               </div>
             </div>
             <label className="flex items-center gap-2 text-sm">
-              <input type="checkbox" checked={!!answers.remoteOk}
+              <input type="checkbox" className="accent-[var(--accent)]" checked={!!answers.remoteOk}
                 onChange={(e) => setAnswers((a) => ({ ...a, remoteOk: e.target.checked }))} />
               Open to remote roles
             </label>
 
-            <hr className="border-black/10 dark:border-white/15" />
+            <hr className="border-[var(--border)]" />
             <p className="text-sm font-medium">What you want next</p>
             <p className={HINT}>These tell the AI matcher what you&apos;re after, so it scores fit beyond skill overlap.</p>
             <div>
@@ -225,25 +230,25 @@ export default function OnboardingWizard() {
 
         {step === 2 && (
           <div>
-            <h2 className="font-medium">Add your Apify API key</h2>
+            <h2 className="font-display text-lg font-semibold">Add your Apify API key</h2>
             <p className={HINT + " mt-1"}>
               Searches run through your own free Apify account, so your usage is yours alone.
             </p>
             <ol className="mt-3 list-decimal space-y-1 pl-5 text-sm">
               <li>
                 Open the{" "}
-                <a href="https://console.apify.com/sign-up" target="_blank" rel="noopener noreferrer" className="underline">
+                <a href="https://console.apify.com/sign-up" target="_blank" rel="noopener noreferrer" className="link">
                   Apify sign-up
                 </a>{" "}
                 (or{" "}
-                <a href="https://console.apify.com/sign-in" target="_blank" rel="noopener noreferrer" className="underline">
+                <a href="https://console.apify.com/sign-in" target="_blank" rel="noopener noreferrer" className="link">
                   sign in
                 </a>{" "}
                 if you already have an account).
               </li>
               <li>
                 Go to{" "}
-                <a href="https://console.apify.com/settings/integrations" target="_blank" rel="noopener noreferrer" className="underline">
+                <a href="https://console.apify.com/settings/integrations" target="_blank" rel="noopener noreferrer" className="link">
                   Settings → Integrations
                 </a>
                 .
@@ -256,7 +261,7 @@ export default function OnboardingWizard() {
           </div>
         )}
 
-        {error && <p className="mt-3 text-sm text-red-600">{error}</p>}
+        {error && <p className="mt-3 text-sm text-[var(--danger)]">{error}</p>}
       </div>
 
       {/* Nav */}
@@ -264,17 +269,17 @@ export default function OnboardingWizard() {
         <div className="flex items-center gap-4">
           {step > 0 && (
             <button type="button" onClick={() => setStep((s) => s - 1)} disabled={busy}
-              className="text-sm text-zinc-500 underline disabled:opacity-50">
+              className="text-sm btn-quiet disabled:opacity-50">
               Back
             </button>
           )}
           <button type="button" onClick={goToDashboard} disabled={busy}
-            className="text-sm text-zinc-500 underline disabled:opacity-50">
+            className="text-sm btn-quiet disabled:opacity-50">
             Skip setup
           </button>
         </div>
         <button type="button" onClick={next} disabled={busy}
-          className="rounded bg-black px-5 py-2 font-medium text-white disabled:opacity-50 dark:bg-white dark:text-black">
+          className="btn btn-primary px-5 py-2.5">
           {busy ? "Saving…" : step === STEPS.length - 1 ? "Finish & go to dashboard" : "Next"}
         </button>
       </div>
