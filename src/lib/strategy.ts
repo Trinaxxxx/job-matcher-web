@@ -93,6 +93,22 @@ const STOPWORDS = new Set(
     .split(" ")
 );
 
+// Nouns that typically end a job title. Used to pick out role-title phrases from
+// CV keyphrases so a blank "target titles" answer can fall back to the role the
+// candidate actually holds / is looking for.
+const ROLE_NOUNS = new Set(
+  ("manager engineer developer analyst designer consultant director lead specialist coordinator " +
+    "administrator officer executive associate architect scientist nurse teacher accountant technician " +
+    "supervisor strategist planner recruiter marketer writer editor researcher advisor controller auditor " +
+    "buyer trader agent representative assistant clerk operator therapist practitioner")
+    .split(" ")
+);
+
+function isRoleTitle(phrase: string): boolean {
+  const words = phrase.split(" ");
+  return ROLE_NOUNS.has(words[words.length - 1]);
+}
+
 function splitList(s?: string): string[] {
   if (!s) return [];
   return s
@@ -153,10 +169,15 @@ function seniorityFromCv(cvText: string): string | undefined {
 }
 
 export function buildStrategy(cvText: string, answers: Answers): Strategy {
-  const titleKeywords = splitList(answers.targetTitles);
   const skills = splitList(answers.skills);
   const industries = splitList(answers.industries);
   const cvPhrases = keyphrasesFromCv(cvText);
+
+  // Target titles: use the user's answer, else fall back to the role-title
+  // phrases in the CV (the role they hold / are looking for), most salient first.
+  const explicitTitles = splitList(answers.targetTitles);
+  const cvRoleTitles = cvPhrases.filter(isRoleTitle);
+  const titleKeywords = explicitTitles.length ? explicitTitles : cvRoleTitles.slice(0, 3);
 
   // Explicit questionnaire skills + industries are always primary must-haves.
   const explicitMust = Array.from(new Set([...skills, ...industries]));

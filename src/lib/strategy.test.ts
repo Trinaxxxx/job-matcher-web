@@ -42,6 +42,18 @@ describe("CV-derived scoring signals", () => {
     expect(s.searchKeywords!.join(" ")).toMatch(/nurse|patient care|acute care/);
   });
 
+  it("blank target titles fall back to the CV's role title (drives title bonus + query)", () => {
+    const cv =
+      "Senior Product Manager. As a product manager I owned the roadmap. Product manager for payments.";
+    const s = buildStrategy(cv, noAnswers);
+    expect(s.titleKeywords).toContain("product manager");
+    // The CV-derived title now earns the +22 title bonus on a matching role.
+    const r = scoreJob({ title: "Product Manager", description: "own the roadmap" }, s);
+    expect(r.reasons.join(" ")).toMatch(/target role in title/);
+    // ...and drives the scrape query.
+    expect(s.searchKeywords).toContain("product manager");
+  });
+
   it("explicit target titles still drive the search query when provided", () => {
     const s = buildStrategy("some cv text repeated repeated words words", {
       targetTitles: "product manager, program manager",
