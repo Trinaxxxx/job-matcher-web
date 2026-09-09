@@ -27,7 +27,7 @@ const REVIEW_MIN_SCORE = Number(process.env.GEMINI_REVIEW_MIN_SCORE ?? 70);
 // scores understate CV-only fits — so lower the gate so those jobs aren't
 // starved of the AI pass.
 const REVIEW_MIN_SCORE_WITH_CV = Number(process.env.GEMINI_REVIEW_MIN_SCORE_CV ?? 55);
-const MODEL = process.env.GEMINI_MODEL ?? "gemini-2.5-flash";
+const MODEL = process.env.GEMINI_MODEL ?? "gemini-3.6-flash";
 // Cap JD text sent to the model to keep token cost/latency bounded.
 const MAX_JD_CHARS = 6000;
 const MAX_CV_CHARS = 8000;
@@ -70,17 +70,25 @@ function strategyDigest(s: Strategy): string {
   return parts.join("\n");
 }
 
+// Funnel + token accounting for one search, so the two-stage saving is
+// measurable rather than assumed. gated = jobs that cleared the keyword gate and
+// were sent to the model (deterministic — the true architectural filter, not
+// affected by rate limits); reviewed = calls that actually succeeded;
+// aiTokens = total tokens Gemini reported across the successful calls.
+export type RescoreStats = { gated: number; reviewed: number; aiTokens: number };
+
 /**
  * Re-rank/annotate the top keyword-scored jobs using Gemini's reading of each
  * JD against the CV + questionnaire strategy. Jobs not sent to Gemini are
- * returned unchanged (keyword score only, aiScored = false).
+ * returned unchanged (keyword score only, aiScored = false). Returns the jobs
+ * plus funnel/token stats for the caller to log.
  */
 export async function geminiRescore(
   jobs: ScoredJob[],
   strategy: Strategy,
   cvText: string
-): Promise<ScoredJob[]> {
-  if (!aiEnabled()) return jobs; // keyword-only mode
+): Promise<{ jobs: ScoredJob[]; stats: RescoreStats }> {
+  if (!aiEnabled()) return { jobs, stats: { gated: 0, reviewed: 0, aiTokens: 0 } }; // keyword-only mode
 
   // Pick the top roles the cheap keyword pass already rates highly — those are
   // the only ones worth a paid deep read. With a CV on file, lower the bar so
@@ -91,20 +99,22 @@ export async function geminiRescore(
     .sort((a, b) => b.score - a.score)
     .slice(0, REVIEW_MAX_JOBS);
 
-  if (!candidates.length) return jobs;
+  if (!candidates.length) return { jobs, stats: { gated: 0, reviewed: 0, aiTokens: 0 } };
 
   const google = createGoogleGenerativeAI({ apiKey: process.env.GEMINI_API_KEY });
   const model = google(MODEL);
   const cv = (cvText || "").slice(0, MAX_CV_CHARS);
   const profile = strategyDigest(strategy);
 
+  let aiTokens = 0;
+  let reviewed = 0;
   await Promise.all(
     candidates.map(async (job) => {
       const jd = `${job.title ?? ""}\n${job.company ?? ""} — ${job.location ?? ""}\n\n${(
         job.description ?? ""
       ).slice(0, MAX_JD_CHARS)}`;
       try {
-        const { object } = await generateObject({
+        const { object, usage } = await generateObject({
           model,
           schema: FitSchema,
           system:
@@ -125,6 +135,9 @@ export async function geminiRescore(
         job.aiScore = object.score;
         job.aiSummary = object.summary;
         job.aiScored = true;
+        reviewed++;
+        // usage field names vary across AI SDK versions; take whichever exists.
+        aiTokens += usage?.totalTokens ?? (usage?.inputTokens ?? 0) + (usage?.outputTokens ?? 0);
       } catch (e) {
         // Degrade gracefully: keep the keyword score, leave AI fields unset.
         console.error(`[ai] rescore failed for "${job.title}":`, e instanceof Error ? e.message : e);
@@ -132,5 +145,5 @@ export async function geminiRescore(
     })
   );
 
-  return jobs;
+  return { jobs, stats: { gated: candidates.length, reviewed, aiTokens } };
 }

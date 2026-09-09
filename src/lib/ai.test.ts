@@ -42,14 +42,15 @@ describe("geminiRescore (AI gating)", () => {
 
   it("is a no-op (returns jobs unchanged) when no key is set", async () => {
     const jobs = [job()];
-    const out = await geminiRescore(jobs, strategy, "cv text");
+    const { jobs: out, stats } = await geminiRescore(jobs, strategy, "cv text");
     expect(out).toBe(jobs);
     expect(out[0].aiScored).toBeUndefined();
     expect(out[0].aiScore).toBeUndefined();
+    expect(stats).toEqual({ gated: 0, reviewed: 0, aiTokens: 0 });
   });
 
   it("never mutates the keyword score/tier fields", async () => {
-    const out = await geminiRescore([job({ score: 42, tier: "Possible" })], strategy, "cv");
+    const { jobs: out } = await geminiRescore([job({ score: 42, tier: "Possible" })], strategy, "cv");
     expect(out[0].score).toBe(42);
     expect(out[0].tier).toBe("Possible");
   });

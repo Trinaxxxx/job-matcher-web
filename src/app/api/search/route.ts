@@ -75,7 +75,8 @@ export async function POST(req: NextRequest) {
   // Gemini deep-read pass: reads the top keyword-scored JDs against the CV +
   // questionnaire and fills aiScore/aiSummary on them. No-op until GEMINI_API_KEY
   // is set (then keyword scores stand alone).
-  scored = await geminiRescore(scored, strategy, profile.cvText ?? "");
+  const rescore = await geminiRescore(scored, strategy, profile.cvText ?? "");
+  scored = rescore.jobs;
 
   // Upsert into the DB (skip ones this user already has).
   let added = 0;
@@ -119,12 +120,35 @@ export async function POST(req: NextRequest) {
 
   const aiReviewed = scored.filter((j) => j.aiScored).length;
   const strongFit = scored.filter((j) => (j.aiScore ?? -1) >= 85).length;
+
+  // Two-stage funnel telemetry.
+  //
+  // The headline saving is DETERMINISTIC and quota-proof: of `raw.length` scraped
+  // jobs, only `gated` cleared the keyword gate and were shown to the model — the
+  // rest were judged by zero-token code. filteredPct is that architectural filter
+  // and does not depend on how many AI calls actually succeeded (rate limits can
+  // suppress `aiReviewed` without changing what the architecture sends).
+  const { gated, aiTokens } = rescore.stats;
+  const filteredPct = raw.length > 0 ? Math.round((1 - gated / raw.length) * 100) : 0;
+  // Measured per-successful-call cost — flat and independent of run size (the
+  // whole point of stateless scoring). Averaged over calls that returned usage.
+  const tokensPerJob = aiReviewed > 0 ? Math.round(aiTokens / aiReviewed) : 0;
+
+  console.log(
+    `[search] funnel: scraped=${raw.length} kept=${scored.length} gated=${gated} ` +
+      `filtered≈${filteredPct}% aiReviewed=${aiReviewed} aiTokens=${aiTokens} tokensPerJob≈${tokensPerJob}`
+  );
+
   return NextResponse.json({
     ok: true,
     scraped: raw.length,
     kept: scored.length,
     saved: added,
+    gated,
+    filteredPct,
     aiReviewed,
     strongFit,
+    aiTokens,
+    tokensPerJob,
   });
 }
