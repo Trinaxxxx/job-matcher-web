@@ -1,5 +1,6 @@
-import { NextResponse } from "next/server";
+import { NextResponse, type NextRequest } from "next/server";
 import { createHash } from "crypto";
+import { checkRateLimit } from "@/lib/ratelimit";
 import { prisma } from "@/lib/db";
 import { getUserId } from "@/lib/auth";
 import { decrypt } from "@/lib/crypto";
@@ -14,9 +15,16 @@ function fingerprint(title = "", company = "", location = ""): string {
   return createHash("sha1").update(`${title}|${company}|${location}`.toLowerCase()).digest("hex");
 }
 
-export async function POST() {
+export async function POST(req: NextRequest) {
   const userId = await getUserId();
   if (!userId) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+
+  if (!(await checkRateLimit(req, "search", userId))) {
+    return NextResponse.json(
+      { error: "Search is rate-limited. Please wait a few minutes before trying again." },
+      { status: 429 }
+    );
+  }
 
   const user = await prisma.user.findUnique({ where: { id: userId }, select: { apifyKeyEnc: true } });
   const profile = await prisma.profile.findUnique({ where: { userId } });
@@ -35,14 +43,16 @@ export async function POST() {
   const keywords = strategy.titleKeywords.length
     ? strategy.titleKeywords.slice(0, 6).join(" OR ")
     : "manager";
-  const location = strategy.locations.length ? strategy.locations.join(" ") : "Remote";
+  // Scrape a single location only — one city or country. Extra locations are ignored.
+  const location = strategy.locations[0] ?? "Remote";
 
   let raw;
   try {
     raw = await scrapeJobs(token, { keywords, location, maxResults: 50 });
   } catch (e) {
+    console.error("[search] scrape failed:", e);
     return NextResponse.json(
-      { error: `Scraping failed: ${e instanceof Error ? e.message : String(e)}` },
+      { error: "Scraping failed. Check that your Apify key is valid and try again." },
       { status: 502 }
     );
   }
@@ -59,7 +69,9 @@ export async function POST() {
     scored.push({ ...job, ...result });
   }
 
-  // Optional Gemini pass (no-op until GEMINI_API_KEY is set).
+  // Gemini deep-read pass: reads the top keyword-scored JDs against the CV +
+  // questionnaire and fills aiScore/aiSummary on them. No-op until GEMINI_API_KEY
+  // is set (then keyword scores stand alone).
   scored = await geminiRescore(scored, strategy, profile.cvText ?? "");
 
   // Upsert into the DB (skip ones this user already has).
@@ -84,8 +96,17 @@ export async function POST() {
           tier: job.tier,
           reasons: job.reasons,
           aiScored: job.aiScored ?? false,
+          aiScore: job.aiScore ?? null,
+          aiSummary: job.aiSummary ?? null,
         },
-        update: { score: job.score, tier: job.tier, reasons: job.reasons },
+        update: {
+          score: job.score,
+          tier: job.tier,
+          reasons: job.reasons,
+          aiScored: job.aiScored ?? false,
+          aiScore: job.aiScore ?? null,
+          aiSummary: job.aiSummary ?? null,
+        },
       });
       added++;
     } catch {
@@ -93,5 +114,14 @@ export async function POST() {
     }
   }
 
-  return NextResponse.json({ ok: true, scraped: raw.length, kept: scored.length, saved: added });
+  const aiReviewed = scored.filter((j) => j.aiScored).length;
+  const strongFit = scored.filter((j) => (j.aiScore ?? -1) >= 85).length;
+  return NextResponse.json({
+    ok: true,
+    scraped: raw.length,
+    kept: scored.length,
+    saved: added,
+    aiReviewed,
+    strongFit,
+  });
 }

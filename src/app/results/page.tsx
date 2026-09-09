@@ -16,7 +16,7 @@ export default async function ResultsPage() {
             Export CSV
           </a>
         </div>
-        <p className="mt-1 text-sm text-zinc-500">Ranked by fit score. Open the reasons to see why each scored as it did.</p>
+        <p className="mt-1 text-sm text-zinc-500">Ranked by fit. Top roles get an AI read (score 85+ = strong fit) — open “why?” for its summary and the keyword reasons.</p>
         <ResultsTable />
       </main>
     </>

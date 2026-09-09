@@ -115,9 +115,10 @@ export default function ProfileForm() {
             </div>
             <div className="grid grid-cols-2 gap-4">
               <div>
-                <label className={LABEL}>Preferred locations</label>
+                <label className={LABEL}>Location</label>
+                <p className={HINT}>One city or country only — the scrape runs a single location.</p>
                 <input className={FIELD} value={answers.locations ?? ""} onChange={set("locations")}
-                  placeholder="Kuala Lumpur, Singapore" />
+                  placeholder="Kuala Lumpur" />
               </div>
               <div>
                 <label className={LABEL}>Locations to avoid</label>
@@ -159,7 +160,10 @@ export default function ProfileForm() {
         <section className="rounded-lg border border-black/10 p-5 dark:border-white/15">
           <h2 className="font-medium">3. Apify API key</h2>
           <p className={HINT}>
-            Your own key from apify.com (Settings → API &amp; Integrations). Stored encrypted; used only for your searches.
+            Your own key from{" "}
+            <a href="https://apify.com/" target="_blank" rel="noopener noreferrer"
+              className="underline">apify.com</a>{" "}
+            (Settings → API &amp; Integrations). Stored encrypted; used only for your searches.
             {hasApifyKey && <span className="text-green-600"> A key is currently saved ✓</span>}
           </p>
           <input className={FIELD + " mt-3"} type="password" value={apifyKey}

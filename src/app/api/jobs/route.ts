@@ -3,13 +3,23 @@ import { z } from "zod";
 import { prisma } from "@/lib/db";
 import { getUserId } from "@/lib/auth";
 
-export async function GET() {
+export async function GET(req: NextRequest) {
   const userId = await getUserId();
   if (!userId) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
+  // Optional ?minAiScore=85 filter for the "strong fit" view. Only affects
+  // AI-reviewed jobs; unreviewed jobs (aiScore null) are excluded when set.
+  const minAiRaw = req.nextUrl.searchParams.get("minAiScore");
+  const minAiScore = minAiRaw !== null ? Number(minAiRaw) : null;
+  const where =
+    minAiScore !== null && Number.isFinite(minAiScore)
+      ? { userId, aiScore: { gte: minAiScore } }
+      : { userId };
+
   const jobs = await prisma.job.findMany({
-    where: { userId },
-    orderBy: [{ score: "desc" }, { createdAt: "desc" }],
+    where,
+    // AI-reviewed jobs first (by AI score), then the rest by keyword score.
+    orderBy: [{ aiScore: { sort: "desc", nulls: "last" } }, { score: "desc" }, { createdAt: "desc" }],
     take: 500,
   });
   return NextResponse.json({ jobs });

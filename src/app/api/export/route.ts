@@ -19,13 +19,13 @@ export async function GET(req: NextRequest) {
 
   const jobs = await prisma.job.findMany({
     where: { userId },
-    orderBy: [{ score: "desc" }],
+    orderBy: [{ aiScore: { sort: "desc", nulls: "last" } }, { score: "desc" }],
     take: 1000,
   });
 
-  const headers = ["Score", "Tier", "Title", "Company", "Location", "Salary", "Status", "Source", "URL", "Posted"];
+  const headers = ["AI Score", "AI Summary", "Score", "Tier", "Title", "Company", "Location", "Salary", "Status", "Source", "URL", "Posted"];
   const rows = jobs.map((j) =>
-    [j.score, j.tier, j.title, j.company, j.location, j.salary, j.status, j.source, j.url, j.postedDate]
+    [j.aiScore, j.aiSummary, j.score, j.tier, j.title, j.company, j.location, j.salary, j.status, j.source, j.url, j.postedDate]
       .map(csvCell)
       .join(",")
   );

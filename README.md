@@ -10,15 +10,25 @@ It shares no code with that version.
 
 - **Stack:** Next.js (App Router, TypeScript) + Tailwind + Prisma + Postgres
 - **Hosting:** GitHub → Vercel
-- **AI:** works fully on keyword scoring today. Gemini is optional and drops into
-  one function (`src/lib/ai.ts → geminiRescore`) when you add `GEMINI_API_KEY`.
+- **AI:** two-stage matching. A keyword engine scores every scraped job cheaply;
+  when `GEMINI_API_KEY` is set, Gemini then deep-reads the **top** keyword-scored
+  JDs against the CV + questionnaire and returns a 0–100 fit score plus a
+  per-job summary (`src/lib/ai.ts → geminiRescore`).
 
-## What works without Gemini
+## How matching works
 
-Everything: accounts, CV parsing (PDF/DOCX/TXT), questionnaire, per-user scoring
-strategy, Apify scraping, ranked results with reasons, status tracking, CSV export.
-The only thing waiting on Gemini is a nuance "read each description" re-rank pass —
-stubbed as a no-op so nothing breaks.
+1. **Keyword scorer** (`src/lib/scoring.ts`) — deterministic first pass over every
+   scraped job. Drops hard exclusions, scores 0–100, and is the cheap gate that
+   decides which jobs are worth a paid AI read. Runs with or without Gemini.
+2. **Gemini deep read** (`src/lib/ai.ts`) — optional. Sends only the top
+   keyword-scored roles' descriptions to Gemini together with the CV and
+   questionnaire, and records a semantic `aiScore` (0–100, 85+ = strong fit) and a
+   short `aiSummary` explaining the fit. Reviewed jobs surface first; the results
+   view can filter to `aiScore >= 85`.
+
+Without `GEMINI_API_KEY` the app runs fully on the keyword scorer — accounts,
+CV parsing (PDF/DOCX/TXT), questionnaire, Apify scraping, ranked results with
+reasons, status tracking, CSV export all work; the Gemini pass is simply skipped.
 
 ## Local development
 
@@ -61,12 +71,40 @@ stubbed as a no-op so nothing breaks.
    at rest (AES-256-GCM).
 3. Dashboard → **Run job search**.
 
-## Enabling Gemini later
+## Enabling the Gemini pass
 
-1. `npm install @google/generative-ai`
-2. Implement `geminiRescore` in `src/lib/ai.ts` (send CV + strategy + each job
-   description, ask for a 0–100 fit score + one-line reason, merge into the score).
-3. Set `GEMINI_API_KEY` in Vercel. No other changes needed.
+The integration is built (Vercel AI SDK + `@ai-sdk/google`). To turn it on:
+
+1. Set `GEMINI_API_KEY` in Vercel (or `.env.local`). That alone enables the pass.
+2. Optional tuning (env vars, all have defaults):
+   - `GEMINI_MODEL` — default `gemini-2.5-flash`.
+   - `GEMINI_REVIEW_MAX_JOBS` — how many top roles to deep-read per search (default `25`).
+   - `GEMINI_REVIEW_MIN_SCORE` — minimum keyword score to qualify for a read (default `70`).
+
+Cost/latency scale with `GEMINI_REVIEW_MAX_JOBS` — each reviewed job is one Gemini
+call. If the pass errors for a job, that job keeps its keyword score and is left
+un-reviewed (the app never fails a search because of Gemini).
+
+## Documentation
+
+Deeper docs live in [`docs/`](docs/):
+
+- [User guide](docs/USER_GUIDE.md) — how to sign up, set up a profile, run a search,
+  read results, and export.
+- [Architecture](docs/ARCHITECTURE.md) — how the pieces fit together and why.
+- [API reference](docs/API.md) — every endpoint, its inputs, and responses.
+- [Data model](docs/ARCHITECTURE.md#data-model) — the database tables.
+- [Deployment & operations](docs/DEPLOYMENT.md) — env vars, database, Vercel, secrets.
+- [Contributing](docs/CONTRIBUTING.md) — project layout, conventions, tests.
+
+## Testing
+
+Unit tests use [Vitest](https://vitest.dev) and live next to the code they cover
+(`src/lib/*.test.ts`):
+
+```bash
+npm test
+```
 
 ## Notes
 

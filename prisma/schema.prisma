@@ -15,6 +15,7 @@ model User {
   id           String   @id @default(cuid())
   email        String   @unique
   passwordHash String
+  isGuest      Boolean  @default(false)
   createdAt    DateTime @default(now())
 
   // Encrypted at rest (see lib/crypto.ts). User brings their own Apify key.
@@ -59,10 +60,15 @@ model Job {
   description  String?  @db.Text
   postedDate   String?
 
-  score        Int      @default(0)   // 0..100
+  score        Int      @default(0)   // 0..100 keyword-scorer score (cheap first pass)
   tier         String?                 // e.g. "Strong match"
-  reasons      Json?                   // string[] explaining the score
+  reasons      Json?                   // string[] explaining the keyword score
   aiScored     Boolean  @default(false)
+
+  // Gemini deep-read pass. Only filled for the top keyword-scored roles that
+  // were sent to Gemini (see lib/ai.ts). Null = not reviewed by AI.
+  aiScore      Int?                    // 0..100 semantic fit from CV + questionnaire + JD
+  aiSummary    String?  @db.Text       // one-paragraph "why this fits you" summary
 
   status       String   @default("New") // New / Interested / Applied / Rejected
   createdAt    DateTime @default(now())
