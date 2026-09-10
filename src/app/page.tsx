@@ -1,7 +1,9 @@
 import { redirect } from "next/navigation";
 import { getUserId } from "@/lib/auth";
+import Landing from "@/components/Landing";
 
 export default async function Home() {
   const userId = await getUserId();
-  redirect(userId ? "/dashboard" : "/login");
+  if (userId) redirect("/dashboard");
+  return <Landing />;
 }

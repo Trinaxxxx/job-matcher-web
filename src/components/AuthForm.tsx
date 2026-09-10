@@ -39,7 +39,7 @@ export default function AuthForm({ mode }: { mode: "login" | "signup" }) {
     if (!res.ok) {
       setBusy(false);
       const data = await res.json().catch(() => ({}));
-      setError(data.error || "Something went wrong");
+      setError(data.error || (isSignup ? "Could not create your account. Please try again." : "Could not sign in. Check your email and password."));
       return;
     }
     // New signups always onboard; logins onboard only if setup is incomplete.
@@ -73,29 +73,41 @@ export default function AuthForm({ mode }: { mode: "login" | "signup" }) {
         <span className="font-display text-lg font-semibold tracking-tight">Job Matcher</span>
       </div>
 
-      <h1 className="text-3xl font-semibold">{isSignup ? "Create your account" : "Welcome back"}</h1>
+      <h1 className="text-3xl font-semibold">{isSignup ? "Create your account" : "Sign in"}</h1>
       <p className="mt-2 text-sm text-muted">
-        {isSignup ? "Set up a private account to save your CV and job matches." : "Log in to see your job matches."}
+        {isSignup
+          ? "Save your CV, preferences, and matched roles in one place."
+          : "Pick up where you left off with your saved matches."}
       </p>
 
       <form onSubmit={submit} className="mt-8 flex flex-col gap-3">
-        <input
-          type="email" required placeholder="you@example.com" value={email}
-          onChange={(e) => setEmail(e.target.value)}
-          className="field"
-        />
-        <input
-          type="password" required placeholder="Password (8+ characters)" value={password}
-          onChange={(e) => setPassword(e.target.value)}
-          className="field"
-        />
+        <div>
+          <label htmlFor="auth-email" className="label mb-1">Email</label>
+          <input
+            id="auth-email"
+            type="email" required placeholder="you@example.com" value={email}
+            onChange={(e) => setEmail(e.target.value)}
+            className="field"
+          />
+        </div>
+        <div>
+          <label htmlFor="auth-password" className="label mb-1">Password</label>
+          <input
+            id="auth-password"
+            type="password" required
+            placeholder={isSignup ? "At least 8 characters" : undefined}
+            value={password}
+            onChange={(e) => setPassword(e.target.value)}
+            className="field"
+          />
+        </div>
         {error && (
           <p role="alert" className="rounded-lg bg-[var(--danger)]/10 px-3 py-2 text-sm text-[var(--danger)]">
             {error}
           </p>
         )}
         <button disabled={busy} className="btn btn-primary mt-1 w-full py-2.5">
-          {busy ? "Please wait…" : isSignup ? "Sign up" : "Log in"}
+          {busy ? "Please wait…" : isSignup ? "Sign up" : "Sign in"}
         </button>
       </form>
 
@@ -111,17 +123,17 @@ export default function AuthForm({ mode }: { mode: "login" | "signup" }) {
         disabled={busy}
         className="btn btn-ghost mt-6 w-full py-2.5"
       >
-        Continue as guest
+        Try without an account
       </button>
       <p className="mt-2 text-xs text-muted">
-        A temporary account — your CV and matches won&apos;t be saved for a return visit.
+        You can explore the app, but your data won&apos;t be kept between sessions.
       </p>
 
       <p className="mt-8 text-sm text-muted">
         {isSignup ? (
-          <>Already have an account? <Link href="/login" className="link">Log in</Link></>
+          <>Already have an account? <Link href="/login" className="link">Sign in</Link></>
         ) : (
-          <>No account yet? <Link href="/signup" className="link">Sign up</Link></>
+          <>First time here? <Link href="/signup" className="link">Create an account</Link></>
         )}
       </p>
     </main>

@@ -18,7 +18,7 @@ export default function Nav() {
       <nav className="mx-auto flex max-w-6xl items-center gap-1 px-4 py-3 text-sm sm:gap-2">
         <Link
           href="/dashboard"
-          className="mr-3 flex items-center gap-2 font-display text-base font-semibold tracking-tight"
+          className="mr-3 flex shrink-0 items-center gap-2 whitespace-nowrap font-display text-base font-semibold tracking-tight"
         >
           <span
             aria-hidden
@@ -46,7 +46,7 @@ export default function Nav() {
             </Link>
           );
         })}
-        <div className="ml-auto flex items-center gap-2">
+        <div className="ml-auto flex shrink-0 items-center gap-2 whitespace-nowrap">
           <ThemeToggle />
           <LogoutButton />
         </div>

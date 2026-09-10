@@ -16,10 +16,14 @@ export default function RunSearch({ disabled }: { disabled: boolean }) {
     const data = await res.json().catch(() => ({}));
     setBusy(false);
     if (!res.ok) {
-      setError(data.error || "Search failed");
+      setError(data.error || "Something went wrong while searching. Check your scraping key and try again.");
       return;
     }
-    setMsg(`Scraped ${data.scraped}, kept ${data.kept}, saved ${data.saved}.`);
+    setMsg(
+      data.saved === 0
+        ? "No new matches this time — try again in a day or two."
+        : `Found ${data.saved} new ${data.saved === 1 ? "match" : "matches"} for you.`
+    );
     router.refresh();
   }
 
@@ -32,11 +36,11 @@ export default function RunSearch({ disabled }: { disabled: boolean }) {
             className="h-4 w-4 animate-spin rounded-full border-2 border-[var(--accent-fg)]/40 border-t-[var(--accent-fg)]"
           />
         )}
-        {busy ? "Searching… this can take a minute" : "Run job search"}
+        {busy ? "Finding matches… this may take a moment" : "Search for jobs"}
       </button>
       {msg && (
         <p className="mt-3 rounded-lg bg-success-soft px-3 py-2 text-sm text-success">
-          {msg} <a href="/results" className="link font-medium">View results →</a>
+          {msg} <a href="/results" className="link font-medium">See your matches →</a>
         </p>
       )}
       {error && (

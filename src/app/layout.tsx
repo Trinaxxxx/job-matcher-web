@@ -1,22 +1,25 @@
 import type { Metadata } from "next";
-import { Geist, Geist_Mono, Outfit } from "next/font/google";
+import { Hanken_Grotesk, Geist_Mono, Bricolage_Grotesque } from "next/font/google";
 import "./globals.css";
 
-const geistSans = Geist({
-  variable: "--font-geist-sans",
+// Body / UI voice — warm humanist grotesque, calm and highly legible for dense job data.
+const sans = Hanken_Grotesk({
+  variable: "--ff-sans",
   subsets: ["latin"],
+  display: "swap",
 });
 
-const geistMono = Geist_Mono({
-  variable: "--font-geist-mono",
+const mono = Geist_Mono({
+  variable: "--ff-mono",
   subsets: ["latin"],
+  display: "swap",
 });
 
-// Display face for headings — gives the UI some character beyond the default UI sans.
-const outfit = Outfit({
-  variable: "--font-display",
+// Display voice — humanist grotesque with warmth and optimism; carries the mood in headings.
+const display = Bricolage_Grotesque({
+  variable: "--ff-display",
   subsets: ["latin"],
-  weight: ["500", "600", "700"],
+  display: "swap",
 });
 
 export const metadata: Metadata = {
@@ -28,7 +31,7 @@ export default function RootLayout({ children }: LayoutProps<"/">) {
   return (
     <html
       lang="en"
-      className={`${geistSans.variable} ${geistMono.variable} ${outfit.variable} h-full antialiased`}
+      className={`${sans.variable} ${mono.variable} ${display.variable} h-full antialiased`}
     >
       <head>
         <script dangerouslySetInnerHTML={{ __html: `(function(){try{var t=localStorage.getItem("theme");if(t==="light"||t==="dark")document.documentElement.setAttribute("data-theme",t)}catch(e){}})()` }} />

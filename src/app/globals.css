@@ -114,9 +114,9 @@
   --color-highlight: var(--highlight);
   --color-highlight-soft: var(--highlight-soft);
 
-  --font-sans: var(--font-geist-sans);
-  --font-display: var(--font-display);
-  --font-mono: var(--font-geist-mono);
+  --font-sans: var(--ff-sans);
+  --font-display: var(--ff-display);
+  --font-mono: var(--ff-mono);
 }
 
 /* ------------------------------------------------------------------ *
@@ -138,8 +138,20 @@ body {
   background-attachment: fixed;
   color: var(--fg);
   font-family: var(--font-sans), ui-sans-serif, system-ui, sans-serif;
+  font-size: 1rem;
+  line-height: 1.6;
   -webkit-font-smoothing: antialiased;
   text-rendering: optimizeLegibility;
+}
+
+/* Light text on the dark surfaces reads thin and tight; open it up a touch. */
+:root[data-theme="dark"] body {
+  letter-spacing: 0.006em;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) body {
+    letter-spacing: 0.006em;
+  }
 }
 
 ::selection {
@@ -156,8 +168,14 @@ body {
 
 h1, h2, h3 {
   font-family: var(--font-display), var(--font-sans), sans-serif;
+  font-optical-sizing: auto;
   letter-spacing: -0.02em;
+  line-height: 1.12;
   text-wrap: balance;
+}
+/* Large display type carries the mood — let it set tighter and closer. */
+h1 {
+  letter-spacing: -0.03em;
 }
 
 p {
@@ -289,5 +307,44 @@ p {
 
   .tnum {
     font-variant-numeric: tabular-nums;
+  }
+}
+
+/* ------------------------------------------------------------------ *
+ * Landing — one authored entrance moment.
+ * Content is server-rendered and visible by default; motion only
+ * applies when the visitor allows it.
+ * ------------------------------------------------------------------ */
+@media (prefers-reduced-motion: no-preference) {
+  @keyframes rise {
+    from {
+      opacity: 0;
+      transform: translateY(14px);
+      filter: blur(6px);
+    }
+    to {
+      opacity: 1;
+      transform: none;
+      filter: none;
+    }
+  }
+  .rise {
+    animation: rise 0.7s cubic-bezier(0.16, 1, 0.3, 1) both;
+    animation-delay: var(--rise-delay, 0ms);
+  }
+}
+
+/* The funnel's flowing accent line. */
+@media (prefers-reduced-motion: no-preference) {
+  @keyframes flow {
+    from {
+      stroke-dashoffset: var(--flow-len, 240);
+    }
+    to {
+      stroke-dashoffset: 0;
+    }
+  }
+  .flow {
+    animation: flow 1.4s cubic-bezier(0.16, 1, 0.3, 1) 0.3s both;
   }
 }

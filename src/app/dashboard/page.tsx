@@ -21,9 +21,9 @@ export default async function Dashboard() {
   const ready = hasCv && hasAnswers && hasApify;
 
   const steps = [
-    { ok: hasCv, label: "Upload your CV", hint: "So matches weigh your real background." },
-    { ok: hasAnswers, label: "Answer the questionnaire", hint: "Titles, skills, and what you want next." },
-    { ok: hasApify, label: "Add your Apify API key", hint: "Runs each search on your own account." },
+    { ok: hasCv, label: "Upload your CV", hint: "Your experience shapes how roles are ranked." },
+    { ok: hasAnswers, label: "Set your preferences", hint: "Target titles, skills, locations, and salary." },
+    { ok: hasApify, label: "Connect a scraping key", hint: "An Apify API key lets the app fetch live listings for you." },
   ];
   const done = steps.filter((s) => s.ok).length;
 
@@ -34,7 +34,7 @@ export default async function Dashboard() {
         className="group flex items-start gap-3 rounded-xl px-3 py-2.5 transition-colors hover:bg-surface-2"
       >
         <span
-          aria-hidden
+          aria-hidden="true"
           className={
             "mt-0.5 grid h-5 w-5 shrink-0 place-items-center rounded-full text-[11px] font-bold " +
             (ok
@@ -48,6 +48,7 @@ export default async function Dashboard() {
           <span className={"block text-sm font-medium " + (ok ? "text-muted line-through" : "")}>{label}</span>
           <span className="block text-xs text-muted">{hint}</span>
         </span>
+        <span className="sr-only">{ok ? "(done)" : "(to do)"}</span>
       </Link>
     </li>
   );
@@ -68,7 +69,14 @@ export default async function Dashboard() {
               <h2 className="font-display text-lg font-semibold">Setup checklist</h2>
               <span className="text-sm text-muted tnum">{done}/{steps.length}</span>
             </div>
-            <div className="mt-3 h-1.5 overflow-hidden rounded-full bg-surface-2">
+            <div
+              role="progressbar"
+              aria-valuenow={done}
+              aria-valuemin={0}
+              aria-valuemax={steps.length}
+              aria-label={`Setup progress: ${done} of ${steps.length} steps complete`}
+              className="mt-3 h-1.5 overflow-hidden rounded-full bg-surface-2"
+            >
               <div
                 className="h-full rounded-full bg-accent transition-[width] duration-500"
                 style={{ width: `${(done / steps.length) * 100}%` }}
@@ -91,7 +99,7 @@ export default async function Dashboard() {
               </p>
             </div>
             <Link href="/results" className="link mt-6 text-sm font-medium">
-              View results →
+              See your matches →
             </Link>
           </section>
         </div>
@@ -100,14 +108,13 @@ export default async function Dashboard() {
         <section className="card card-lift mt-5 p-6">
           <h2 className="font-display text-lg font-semibold">Find matches</h2>
           <p className="mt-1 max-w-prose text-sm text-muted">
-            Scrapes fresh jobs with your Apify key, scores them against your profile with a zero-cost keyword pass,
-            then gives the top roles an AI read.
+            Pulls recent job listings, scores them against your CV and preferences, and highlights the strongest fits.
           </p>
           <div className="mt-5">
             <RunSearch disabled={!ready} />
           </div>
           {!ready && (
-            <p className="mt-3 text-sm text-warning">Finish the checklist above to enable search.</p>
+            <p className="mt-3 text-sm text-warning">Complete the setup steps above before searching.</p>
           )}
         </section>
       </main>
