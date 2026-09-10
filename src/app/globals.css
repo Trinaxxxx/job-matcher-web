@@ -1,51 +1,61 @@
 @import "tailwindcss";
 
 /* ------------------------------------------------------------------ *
- * Design tokens — "soft / premium agency"
- * Warm neutral surfaces, one desaturated teal accent, tinted shadows.
+ * Design tokens — warm editorial (light) / cool monochrome (dark)
+ * Shared bright-orange highlight accent across both modes.
  * ------------------------------------------------------------------ */
 :root {
-  --bg: #f7f5f1;          /* warm paper */
-  --surface: #ffffff;
-  --surface-2: #fbfaf8;
-  --fg: #201d1a;          /* warm near-black */
-  --muted: #6b6560;
-  --muted-2: #938c85;
-  --border: rgba(32, 29, 26, 0.1);
-  --border-strong: rgba(32, 29, 26, 0.16);
+  --bg: #FFF6E9;
+  --surface: #FFFFFF;
+  --surface-2: #FBF1DE;
+  --fg: #0A171D;
+  --muted: #56666A;
+  --muted-2: #8A9599;
+  --border: rgba(10, 23, 29, 0.1);
+  --border-strong: rgba(10, 23, 29, 0.16);
 
-  --accent: #146a5e;      /* deep teal */
-  --accent-hover: #0e564c;
-  --accent-fg: #ffffff;
-  --accent-soft: rgba(20, 106, 94, 0.1);
-  --ring: rgba(20, 106, 94, 0.45);
+  --accent: #003F47;
+  --accent-hover: #00313A;
+  --accent-fg: #FFFFFF;
+  --accent-soft: rgba(0, 63, 71, 0.08);
+  --ring: rgba(0, 63, 71, 0.4);
+
+  --highlight: #FF6600;
+  --highlight-hover: #E85A00;
+  --highlight-fg: #FFFFFF;
+  --highlight-soft: rgba(255, 102, 0, 0.12);
 
   --success: #2f7d53;
   --success-soft: rgba(47, 125, 83, 0.12);
   --warning: #9a6b12;
   --danger: #b4432f;
 
-  --shadow-sm: 0 1px 2px rgba(32, 29, 26, 0.05);
-  --shadow-md: 0 1px 2px rgba(32, 29, 26, 0.05), 0 10px 26px -14px rgba(32, 29, 26, 0.28);
+  --shadow-sm: 0 1px 2px rgba(10, 23, 29, 0.06);
+  --shadow-md: 0 1px 2px rgba(10, 23, 29, 0.06), 0 10px 26px -14px rgba(10, 23, 29, 0.22);
   --radius: 14px;
 }
 
 @media (prefers-color-scheme: dark) {
-  :root {
-    --bg: #171512;        /* warm charcoal, not pure black */
-    --surface: #201e1a;
-    --surface-2: #262320;
-    --fg: #ece8e1;
-    --muted: #a39c93;
-    --muted-2: #837c74;
+  :root:not([data-theme="light"]) {
+    --bg: #06141B;
+    --surface: #003F47;
+    --surface-2: #11212D;
+    --fg: #CCD0CF;
+    --muted: #9BA8AB;
+    --muted-2: #6B7D82;
     --border: rgba(255, 255, 255, 0.1);
-    --border-strong: rgba(255, 255, 255, 0.17);
+    --border-strong: rgba(255, 255, 255, 0.15);
 
-    --accent: #55b7a8;    /* lighter teal for dark contrast */
-    --accent-hover: #6ac7b8;
-    --accent-fg: #10201d;
-    --accent-soft: rgba(85, 183, 168, 0.14);
-    --ring: rgba(85, 183, 168, 0.5);
+    --accent: #5FB8A9;
+    --accent-hover: #78C9BC;
+    --accent-fg: #06141B;
+    --accent-soft: rgba(95, 184, 169, 0.12);
+    --ring: rgba(95, 184, 169, 0.45);
+
+    --highlight: #FF6600;
+    --highlight-hover: #FF7A1A;
+    --highlight-fg: #FFFFFF;
+    --highlight-soft: rgba(255, 102, 0, 0.16);
 
     --success: #57b285;
     --success-soft: rgba(87, 178, 133, 0.16);
@@ -55,6 +65,36 @@
     --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.3);
     --shadow-md: 0 1px 2px rgba(0, 0, 0, 0.3), 0 12px 30px -16px rgba(0, 0, 0, 0.6);
   }
+}
+
+:root[data-theme="dark"] {
+  --bg: #06141B;
+  --surface: #003F47;
+  --surface-2: #11212D;
+  --fg: #CCD0CF;
+  --muted: #9BA8AB;
+  --muted-2: #6B7D82;
+  --border: rgba(255, 255, 255, 0.1);
+  --border-strong: rgba(255, 255, 255, 0.15);
+
+  --accent: #5FB8A9;
+  --accent-hover: #78C9BC;
+  --accent-fg: #06141B;
+  --accent-soft: rgba(95, 184, 169, 0.12);
+  --ring: rgba(95, 184, 169, 0.45);
+
+  --highlight: #FF6600;
+  --highlight-hover: #FF7A1A;
+  --highlight-fg: #FFFFFF;
+  --highlight-soft: rgba(255, 102, 0, 0.16);
+
+  --success: #57b285;
+  --success-soft: rgba(87, 178, 133, 0.16);
+  --warning: #d3a24a;
+  --danger: #e0806e;
+
+  --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.3);
+  --shadow-md: 0 1px 2px rgba(0, 0, 0, 0.3), 0 12px 30px -16px rgba(0, 0, 0, 0.6);
 }
 
 @theme inline {
@@ -71,6 +111,8 @@
   --color-success: var(--success);
   --color-warning: var(--warning);
   --color-danger: var(--danger);
+  --color-highlight: var(--highlight);
+  --color-highlight-soft: var(--highlight-soft);
 
   --font-sans: var(--font-geist-sans);
   --font-display: var(--font-display);
@@ -159,12 +201,12 @@ p {
   }
 
   .btn-primary {
-    background: var(--accent);
-    color: var(--accent-fg);
+    background: var(--highlight);
+    color: var(--highlight-fg);
     box-shadow: var(--shadow-sm);
   }
   .btn-primary:hover:not(:disabled) {
-    background: var(--accent-hover);
+    background: var(--highlight-hover);
   }
 
   .btn-ghost {
