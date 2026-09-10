@@ -32,6 +32,14 @@ const authLimiter = make(Ratelimit.slidingWindow(10, "10 m"), "rl:auth");
 // Very tight limit for the expensive scrape (each call spends the user's Apify
 // quota and can run for minutes).
 const searchLimiter = make(Ratelimit.slidingWindow(5, "10 m"), "rl:search");
+// Global per-IP cap for the expensive search, checked IN ADDITION to the
+// per-user limit. The per-user search bucket is keyed by (IP, userId), so a
+// disposable guest account mints a fresh bucket — an attacker could spin up many
+// guest accounts from one IP to multiply cost. This IP-only bucket (no userId in
+// the key) caps a whole network's search volume no matter how many accounts it
+// uses. Sized above the per-user 5 so a handful of legit users behind one NAT
+// aren't blocked, while still stopping account-rotation amplification.
+const searchIpLimiter = make(Ratelimit.slidingWindow(15, "10 m"), "rl:search:ip");
 // General limit for other authenticated but expensive endpoints (CV parsing,
 // large exports) so a single account can't spam CPU/DB work.
 const generalLimiter = make(Ratelimit.slidingWindow(30, "10 m"), "rl:general");
@@ -58,7 +66,7 @@ export function clientKey(req: NextRequest): string {
   return "unknown";
 }
 
-export type LimitKind = "auth" | "search" | "general";
+export type LimitKind = "auth" | "search" | "searchIp" | "general";
 
 // Returns true if the request is within the limit (or limiting is disabled),
 // false if it should be rejected with 429.
@@ -68,7 +76,13 @@ export async function checkRateLimit(
   extraKey?: string
 ): Promise<boolean> {
   const limiter =
-    kind === "auth" ? authLimiter : kind === "search" ? searchLimiter : generalLimiter;
+    kind === "auth"
+      ? authLimiter
+      : kind === "search"
+        ? searchLimiter
+        : kind === "searchIp"
+          ? searchIpLimiter
+          : generalLimiter;
   if (!limiter) return true; // limiting disabled
   const id = extraKey ? `${clientKey(req)}:${extraKey}` : clientKey(req);
   const { success } = await limiter.limit(id);

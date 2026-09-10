@@ -19,6 +19,15 @@ export async function POST(req: NextRequest) {
   const userId = await getUserId();
   if (!userId) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
+  // Two layers: a per-user cap (below) so one account can't spam the scrape, and
+  // a per-IP cap (no userId in the key) so one network can't amplify cost by
+  // rotating through disposable guest accounts.
+  if (!(await checkRateLimit(req, "searchIp"))) {
+    return NextResponse.json(
+      { error: "Too many searches from your network. Please wait a few minutes before trying again." },
+      { status: 429 }
+    );
+  }
   if (!(await checkRateLimit(req, "search", userId))) {
     return NextResponse.json(
       { error: "Search is rate-limited. Please wait a few minutes before trying again." },

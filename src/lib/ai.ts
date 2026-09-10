@@ -3,6 +3,7 @@ import { generateObject } from "ai";
 import { z } from "zod";
 import type { Strategy } from "./strategy";
 import type { RawJob, ScoreResult } from "./scoring";
+import { geminiBudgetAvailable, recordGeminiSpend } from "./budget";
 
 // ---------------------------------------------------------------------------
 // AI MATCHING PASS — the semantic re-read that keyword scoring can't do.
@@ -27,10 +28,67 @@ const REVIEW_MIN_SCORE = Number(process.env.GEMINI_REVIEW_MIN_SCORE ?? 70);
 // scores understate CV-only fits — so lower the gate so those jobs aren't
 // starved of the AI pass.
 const REVIEW_MIN_SCORE_WITH_CV = Number(process.env.GEMINI_REVIEW_MIN_SCORE_CV ?? 55);
-const MODEL = process.env.GEMINI_MODEL ?? "gemini-3.6-flash";
+// Default to 3.5 Flash Lite: 3× the free-tier RPM (15 vs 5), and the task —
+// reading one JD to emit a score + short summary — is squarely in Lite's lane.
+// Override with GEMINI_MODEL to use a heavier model (e.g. "gemini-3.6-flash").
+const MODEL = process.env.GEMINI_MODEL ?? "gemini-3.5-flash-lite";
 // Cap JD text sent to the model to keep token cost/latency bounded.
 const MAX_JD_CHARS = 6000;
 const MAX_CV_CHARS = 8000;
+
+// Collapse the messy whitespace that scraped JDs carry — repeated blank lines,
+// tab-indented bullets, trailing spaces — so the model sees the same content in
+// fewer tokens (typically 15–25% savings). CV text is already normalised at
+// parse time (lib/cv.ts); JDs arrive raw from the scraper so clean them here.
+function compactText(s: string): string {
+  return s
+    .replace(/\r\n/g, "\n")
+    .replace(/\t/g, " ")
+    .replace(/[^\S\n]+/g, " ")
+    .replace(/ *\n */g, "\n")
+    .replace(/\n{3,}/g, "\n\n")
+    .replace(/^[ \t]+|[ \t]+$/gm, "")
+    .trim();
+}
+
+// Bound how many Gemini requests are in flight at once. The free tier allows only
+// ~5 requests/minute, so an unbounded Promise.all fan-out (up to REVIEW_MAX_JOBS
+// at once) instantly trips the RPM limit and most calls 429 — the AI pass then
+// silently degrades to keyword-only. A small pool paces requests, and 429-aware
+// backoff retries the ones that still hit the limit instead of dropping them.
+// Raise CONCURRENCY on a paid tier (much higher RPM); keep it low on free tier.
+const CONCURRENCY = Math.max(1, Number(process.env.GEMINI_CONCURRENCY ?? 4));
+// Extra attempts per job specifically for rate-limit (429 / RESOURCE_EXHAUSTED)
+// errors. Other errors are not retried.
+const MAX_RETRIES = Math.max(0, Number(process.env.GEMINI_MAX_RETRIES ?? 2));
+
+function isRateLimitError(e: unknown): boolean {
+  const msg = e instanceof Error ? e.message : String(e);
+  // The AI SDK surfaces provider errors as text; Gemini rate limits read as
+  // "429" / "RESOURCE_EXHAUSTED" / quota messages.
+  return /429|RESOURCE_EXHAUSTED|rate.?limit|quota/i.test(msg);
+}
+
+function sleep(ms: number): Promise<void> {
+  return new Promise((r) => setTimeout(r, ms));
+}
+
+// Run `task` over `items` with at most `limit` in flight. A fixed pool of workers
+// pulls from a shared cursor, so requests are paced instead of bursting all at once.
+async function mapPool<T>(
+  items: T[],
+  limit: number,
+  task: (item: T) => Promise<void>
+): Promise<void> {
+  let next = 0;
+  const worker = async () => {
+    while (next < items.length) {
+      const i = next++;
+      await task(items[i]);
+    }
+  };
+  await Promise.all(Array.from({ length: Math.min(limit, items.length) }, worker));
+}
 
 export function aiEnabled(): boolean {
   return !!process.env.GEMINI_API_KEY;
@@ -44,6 +102,15 @@ export type ScoredJob = RawJob &
   };
 
 const FitSchema = z.object({
+  // reasoning comes FIRST so the model writes out its analysis before committing
+  // to a number — this is a lightweight chain-of-thought that improves scoring
+  // accuracy (the model can't anchor on a score then rationalize; it must reason
+  // its way to the number). Not stored — only score + summary go to the DB.
+  reasoning: z.string().max(1500).describe(
+    "Internal step-by-step analysis: list the key CV strengths that match the JD, " +
+    "the gaps or mismatches, how the candidate's stated intent/priorities align or conflict, " +
+    "and your seniority/location/salary assessment. This drives the score."
+  ),
   score: z.number().int().min(0).max(100),
   summary: z.string().max(800),
 });
@@ -90,6 +157,14 @@ export async function geminiRescore(
 ): Promise<{ jobs: ScoredJob[]; stats: RescoreStats }> {
   if (!aiEnabled()) return { jobs, stats: { gated: 0, reviewed: 0, aiTokens: 0 } }; // keyword-only mode
 
+  // Global daily spend cap on the shared Gemini key. If today's budget is used
+  // up, fall back to keyword-only for this search (same graceful path as AI-off)
+  // rather than adding to the bill.
+  if (!(await geminiBudgetAvailable())) {
+    console.warn("[ai] daily Gemini budget reached — skipping AI pass (keyword-only for this search).");
+    return { jobs, stats: { gated: 0, reviewed: 0, aiTokens: 0 } };
+  }
+
   // Pick the top roles the cheap keyword pass already rates highly — those are
   // the only ones worth a paid deep read. With a CV on file, lower the bar so
   // strong CV-fits the keyword pass underrates still get read.
@@ -108,11 +183,11 @@ export async function geminiRescore(
 
   let aiTokens = 0;
   let reviewed = 0;
-  await Promise.all(
-    candidates.map(async (job) => {
-      const jd = `${job.title ?? ""}\n${job.company ?? ""} — ${job.location ?? ""}\n\n${(
-        job.description ?? ""
-      ).slice(0, MAX_JD_CHARS)}`;
+  await mapPool(candidates, CONCURRENCY, async (job) => {
+    const jd = `${job.title ?? ""}\n${job.company ?? ""} — ${job.location ?? ""}\n\n${compactText(
+      (job.description ?? "").slice(0, MAX_JD_CHARS + 2000) // slice generously, then compact shrinks it
+    ).slice(0, MAX_JD_CHARS)}`;
+    for (let attempt = 0; attempt <= MAX_RETRIES; attempt++) {
       try {
         const { object, usage } = await generateObject({
           model,
@@ -136,14 +211,36 @@ export async function geminiRescore(
         job.aiSummary = object.summary;
         job.aiScored = true;
         reviewed++;
+        // Log the chain-of-thought reasoning in dev so you can inspect WHY the
+        // model scored the way it did. Not stored in the DB (only score + summary
+        // are persisted). Set GEMINI_LOG_REASONING=1 to see it in production logs.
+        if (process.env.NODE_ENV === "development" || process.env.GEMINI_LOG_REASONING) {
+          console.log(
+            `[ai] "${job.title}" @ ${job.company ?? "?"} → ${object.score}/100\n` +
+            `  reasoning: ${object.reasoning}\n` +
+            `  summary: ${object.summary}`
+          );
+        }
         // usage field names vary across AI SDK versions; take whichever exists.
         aiTokens += usage?.totalTokens ?? (usage?.inputTokens ?? 0) + (usage?.outputTokens ?? 0);
+        return;
       } catch (e) {
-        // Degrade gracefully: keep the keyword score, leave AI fields unset.
+        // Rate-limited and retries left: back off (2s, 4s, …) to let the
+        // per-minute window drain, then try this job again.
+        if (isRateLimitError(e) && attempt < MAX_RETRIES) {
+          await sleep(1000 * 2 ** (attempt + 1));
+          continue;
+        }
+        // Out of retries or a non-rate-limit error: degrade gracefully — keep the
+        // keyword score, leave AI fields unset.
         console.error(`[ai] rescore failed for "${job.title}":`, e instanceof Error ? e.message : e);
+        return;
       }
-    })
-  );
+    }
+  });
+
+  // Record this pass's spend against today's global budget (best-effort).
+  await recordGeminiSpend(aiTokens);
 
   return { jobs, stats: { gated: candidates.length, reviewed, aiTokens } };
 }

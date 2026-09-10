@@ -26,6 +26,13 @@ describe("parseCv (G — magic-byte validation & output cap)", () => {
     expect(await parseCv("cv.txt", textBuf("  hello world  "))).toBe("hello world");
   });
 
+  it("normalises messy whitespace from extracted text (token savings)", async () => {
+    const messy = "  Line one  \t  \n\n\n\n\n   Line two   \r\n  Line three  ";
+    const out = await parseCv("cv.txt", textBuf(messy));
+    // Tabs → spaces, runs collapsed, 3+ blank lines → one, each line trimmed
+    expect(out).toBe("Line one\n\nLine two\nLine three");
+  });
+
   it("caps very large .txt content at MAX_CV_CHARS", async () => {
     const big = "a".repeat(MAX_CV_CHARS + 5000);
     const out = await parseCv("cv.txt", textBuf(big));

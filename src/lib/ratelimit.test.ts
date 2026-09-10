@@ -44,4 +44,10 @@ describe("checkRateLimit (F — general kind)", () => {
     const req = reqWith({ "x-real-ip": "203.0.113.7" });
     await expect(checkRateLimit(req, "general", "user-1")).resolves.toBe(true);
   });
+
+  it("accepts the 'searchIp' kind (IP-layer for the expensive search)", async () => {
+    const req = reqWith({ "x-real-ip": "203.0.113.7" });
+    // No extraKey: this bucket is keyed by IP only, capping a whole network.
+    await expect(checkRateLimit(req, "searchIp")).resolves.toBe(true);
+  });
 });
