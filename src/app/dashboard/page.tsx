@@ -36,13 +36,19 @@ export default async function Dashboard() {
         <span
           aria-hidden="true"
           className={
-            "mt-0.5 grid h-5 w-5 shrink-0 place-items-center rounded-full text-[11px] font-bold " +
+            "mt-0.5 grid h-5 w-5 shrink-0 place-items-center rounded-full " +
             (ok
               ? "bg-success text-white"
               : "border border-subtle-strong text-muted-2 group-hover:border-accent group-hover:text-accent")
           }
         >
-          {ok ? "✓" : ""}
+          {ok ? (
+            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round">
+              <path d="m5 12 4.5 4.5L19 7" />
+            </svg>
+          ) : (
+            <span className="h-1.5 w-1.5 rounded-full bg-current opacity-40" />
+          )}
         </span>
         <span>
           <span className={"block text-sm font-medium " + (ok ? "text-muted line-through" : "")}>{label}</span>
@@ -67,7 +73,7 @@ export default async function Dashboard() {
           <section className="card card-lift p-6 md:col-span-3">
             <div className="flex items-baseline justify-between">
               <h2 className="font-display text-lg font-semibold">Setup checklist</h2>
-              <span className="text-sm text-muted tnum">{done}/{steps.length}</span>
+              <span className="font-mono text-sm text-muted tnum">{done}/{steps.length}</span>
             </div>
             <div
               role="progressbar"
@@ -93,7 +99,7 @@ export default async function Dashboard() {
           <section className="card card-lift flex flex-col justify-between p-6 md:col-span-2">
             <div>
               <h2 className="font-display text-lg font-semibold">Saved matches</h2>
-              <p className="mt-3 font-display text-5xl font-semibold tracking-tight tnum">{jobCount}</p>
+              <p className="mt-3 font-mono text-5xl font-semibold tracking-tight tnum">{jobCount}</p>
               <p className="mt-1 text-sm text-muted">
                 {jobCount === 1 ? "role saved" : "roles saved"} to your list.
               </p>

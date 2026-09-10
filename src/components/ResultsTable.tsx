@@ -86,7 +86,7 @@ export default function ResultsTable() {
         {controls}
         <div className="card mt-6 px-6 py-16 text-center">
           <div aria-hidden className="mx-auto grid h-12 w-12 place-items-center rounded-full bg-accent-soft text-accent">
-            <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+            <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round">
               <circle cx="11" cy="11" r="7" />
               <path d="m20 20-3.5-3.5" />
             </svg>
@@ -106,12 +106,12 @@ export default function ResultsTable() {
     <div className="card mt-4 overflow-x-auto">
       <table className="w-full text-sm">
         <thead className="border-b border-subtle text-left">
-          <tr className="text-xs font-medium uppercase tracking-wide text-muted-2">
-            <th className="px-4 py-3 font-medium">Fit</th>
-            <th className="px-4 py-3 font-medium">Role</th>
-            <th className="px-4 py-3 font-medium">Location</th>
-            <th className="px-4 py-3 font-medium">Source</th>
-            <th className="px-4 py-3 font-medium">Status</th>
+          <tr className="text-[11px] font-semibold uppercase tracking-[0.12em] text-muted">
+            <th className="px-4 py-3">Fit</th>
+            <th className="px-4 py-3">Role</th>
+            <th className="px-4 py-3">Location</th>
+            <th className="px-4 py-3">Source</th>
+            <th className="px-4 py-3">Status</th>
           </tr>
         </thead>
         <tbody>
@@ -121,12 +121,14 @@ export default function ResultsTable() {
                 <td className="px-4 py-3">
                   {j.aiScored && typeof j.aiScore === "number" ? (
                     <>
-                      <span className={`badge ${scoreColor(j.aiScore)}`} title="Gemini fit score">{j.aiScore}</span>
-                      <span className="ml-1 text-[10px] font-semibold text-accent" title="AI-reviewed">AI</span>
-                      <div className="mt-1 text-[10px] text-muted-2 tnum" title="Keyword score">kw {j.score}</div>
+                      <span className="flex items-center gap-1.5">
+                        <span className={`badge font-mono ${scoreColor(j.aiScore)}`} title="Gemini fit score">{j.aiScore}</span>
+                        <span className="badge bg-accent-soft text-accent" title="AI-reviewed">AI</span>
+                      </span>
+                      <div className="mt-1 font-mono text-[10px] text-muted tnum" title="Keyword score">kw {j.score}</div>
                     </>
                   ) : (
-                    <span className={`badge ${scoreColor(j.score)}`} title="Keyword score">{j.score}</span>
+                    <span className={`badge font-mono ${scoreColor(j.score)}`} title="Keyword score">{j.score}</span>
                   )}
                 </td>
                 <td className="px-4 py-3">
