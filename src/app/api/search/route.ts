@@ -54,7 +54,15 @@ export async function POST(req: NextRequest) {
   const queryTerms = strategy.searchKeywords?.length
     ? strategy.searchKeywords
     : strategy.titleKeywords;
-  const keywords = queryTerms.length ? queryTerms.slice(0, 6).join(" OR ") : "manager";
+  const titleGroup = queryTerms.length ? queryTerms.slice(0, 6).join(" OR ") : "manager";
+  // Fold the user's explicit skills/industries into the query so the scrape is
+  // biased toward their domain from the start, instead of pulling every job with
+  // a matching title (e.g. every "Sales Manager" in the country) and leaving the
+  // keyword + AI passes to reject the off-domain majority. These are appended as
+  // extra relevance terms (job boards treat them as a soft ranking boost, not a
+  // hard AND), so a thin domain vocabulary can't zero out the results.
+  const domainTerms = (strategy.coreKeywords ?? []).slice(0, 3);
+  const keywords = domainTerms.length ? `${titleGroup} ${domainTerms.join(" ")}` : titleGroup;
   // Scrape a single location only — one city or country. Extra locations are ignored.
   const location = strategy.locations[0] ?? "Remote";
 

@@ -27,6 +27,12 @@ export type Answers = {
 export type Strategy = {
   titleKeywords: string[];
   mustHaveKeywords: string[];
+  // The user's EXPLICITLY stated skills + industries only (no CV-derived phrases).
+  // This is the strongest domain signal, so the keyword scorer penalizes jobs that
+  // hit none of these. Kept separate from mustHaveKeywords, which also folds in
+  // noisier CV keyphrases that shouldn't gate the domain guard. Optional for
+  // back-compat with strategies stored before this field existed.
+  coreKeywords?: string[];
   niceToHaveKeywords: string[];
   // Terms used to build the scrape query. Falls back to CV-derived phrases when
   // the user gave no target titles. Optional for back-compat with stored strategies.
@@ -216,6 +222,7 @@ export function buildStrategy(cvText: string, answers: Answers): Strategy {
   return {
     titleKeywords,
     mustHaveKeywords,
+    coreKeywords: explicitMust,
     niceToHaveKeywords,
     searchKeywords,
     excludeKeywords: splitList(answers.dealbreakers),

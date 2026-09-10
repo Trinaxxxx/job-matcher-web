@@ -80,6 +80,11 @@ export async function scrapeJobs(token: string, params: SearchParams): Promise<R
       const items = await runActor("blackfalcondata/jobstreet-scraper", token, {
         query: params.keywords,
         country: /singapore|\bsg\b/i.test(params.location) ? "SG" : "MY",
+        // Pass the requested city/region too, so the scrape is constrained to the
+        // user's location instead of returning the entire country (which is why a
+        // "Kuala Lumpur" search surfaced Penang and Pahang roles). An actor that
+        // doesn't recognise this key simply ignores it — no worse than before.
+        location: params.location,
         maxResults: params.maxResults,
         includeDetails: true,
         sortMode: "date",

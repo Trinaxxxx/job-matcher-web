@@ -122,6 +122,7 @@ export function scoreJob(job: RawJob, s: Strategy): ScoreResult {
   const title = (job.title || "").toLowerCase();
   const desc = (job.description || "").toLowerCase();
   const loc = (job.location || "").toLowerCase();
+  const company = (job.company || "").toLowerCase();
   const text = `${title}\n${desc}`;
   const reasons: string[] = [];
 
@@ -132,9 +133,12 @@ export function scoreJob(job: RawJob, s: Strategy): ScoreResult {
       return { score: 0, tier: "Weak", reasons: [`Excluded: dealbreaker "${ex}" in title`], excluded: true, excludeReason: `Dealbreaker "${ex}" in title` };
     }
   }
-  // Location the user wants to avoid.
+  // Location the user wants to avoid. Also match the COMPANY name: an avoid-term
+  // like "India" often identifies the employer's base (e.g. "Tempsens Instruments
+  // (India) Limited" posting a KL role) rather than the job's location field, and
+  // checking only location/title let those through.
   for (const ex of s.excludeLocations) {
-    if (ex && (has(loc, ex) || has(title, ex))) {
+    if (ex && (has(loc, ex) || has(title, ex) || has(company, ex))) {
       return { score: 0, tier: "Weak", reasons: [`Excluded: location "${ex}"`], excluded: true, excludeReason: `Excluded location "${ex}"` };
     }
   }
@@ -169,6 +173,23 @@ export function scoreJob(job: RawJob, s: Strategy): ScoreResult {
     reasons.push(`+${pts} key skills/industry match (${must.slice(0, 5).join(", ")})`);
   }
 
+  // Domain guard. The user named explicit skills/industries (coreKeywords) — their
+  // strongest domain signal — and this job hits NONE of them in title or body.
+  // Without this, a title + location match alone reaches "Strong match" (base 50
+  // +22 title +8 location = 80) regardless of sector, which is why hotel,
+  // industrial, and automotive "Sales Manager" roles scored as strong matches for
+  // a fintech/SaaS candidate and crowded out the AI-review budget. Penalize rather
+  // than exclude — the AI pass may still catch nuance a keyword can't. Fires only
+  // when coreKeywords is present, so strategies stored before this field keep the
+  // previous behavior.
+  if (s.coreKeywords?.length) {
+    const core = countHits(text, s.coreKeywords, true).hits;
+    if (!core.length) {
+      score -= 20;
+      reasons.push(`-20 none of your key skills/industries (${s.coreKeywords.slice(0, 5).join(", ")}) found — likely off-domain`);
+    }
+  }
+
   // Nice-to-haves (CV-derived).
   const nice = countHits(text, s.niceToHaveKeywords, true).hits;
   if (nice.length) {
@@ -178,11 +199,25 @@ export function scoreJob(job: RawJob, s: Strategy): ScoreResult {
   }
 
   // Preferred location / remote.
-  if (s.locations.length && s.locations.some((l) => has(loc, l) || has(desc, l))) {
-    score += 8;
-    reasons.push(`+8 preferred location`);
+  const remoteMatch = has(text, "remote") || has(loc, "remote");
+  if (s.locations.length) {
+    const locMatch = s.locations.some((l) => has(loc, l) || has(desc, l));
+    if (locMatch) {
+      score += 8;
+      reasons.push(`+8 preferred location`);
+    } else if (!(s.remoteOk && remoteMatch)) {
+      // A preferred location was given, but this job is neither in it nor a remote
+      // role the user accepts. Previously such jobs merely forfeited the +8 yet
+      // still reached "Strong match" on title alone — so roles in a different
+      // state or country ranked as top matches. Dock heavily instead. (Not an
+      // outright exclusion: metro naming varies — "Petaling Jaya" won't literally
+      // contain "Kuala Lumpur" — so we keep near-region roles visible but ranked
+      // below true in-location ones.)
+      score -= 15;
+      reasons.push(`-15 outside your preferred location (${s.locations.slice(0, 2).join(", ")})`);
+    }
   }
-  if (s.remoteOk && (has(text, "remote") || has(loc, "remote"))) {
+  if (s.remoteOk && remoteMatch) {
     score += 4;
     reasons.push(`+4 remote available`);
   }
@@ -203,12 +238,16 @@ export function scoreJob(job: RawJob, s: Strategy): ScoreResult {
       const amt = Math.round(parsed.monthly);
       const tag = parsed.approx ? ` (~approx, ${parsed.basis})` : "";
       if (amt < s.minSalary) {
-        score -= 12;
-        reasons.push(`-12 salary ~${amt}/mo${tag} below your floor ${s.minSalary}`);
-      } else {
-        score += 4;
-        reasons.push(`+4 salary ~${amt}/mo${tag} meets your floor`);
+        // A stated salary below the user's floor is a hard disqualifier — exclude
+        // it outright rather than merely docking points (a docked below-floor job
+        // could still clear the AI-review gate and occupy the results). Jobs with
+        // no parseable salary are NOT excluded: absent pay data is unknown, not
+        // below-floor, so we leave them to the rest of the scoring.
+        const msg = `salary ~${amt}/mo${tag} below your floor ${s.minSalary}`;
+        return { score: 0, tier: "Weak", reasons: [...reasons, `Excluded: ${msg}`], excluded: true, excludeReason: msg };
       }
+      score += 4;
+      reasons.push(`+4 salary ~${amt}/mo${tag} meets your floor`);
     }
   }
 

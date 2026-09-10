@@ -169,9 +169,19 @@ export async function geminiRescore(
   // the only ones worth a paid deep read. With a CV on file, lower the bar so
   // strong CV-fits the keyword pass underrates still get read.
   const minScore = (cvText || "").trim() ? REVIEW_MIN_SCORE_WITH_CV : REVIEW_MIN_SCORE;
+  const hasDesc = (j: ScoredJob) => (j.description ?? "").trim().length > 0;
   const candidates = jobs
-    .filter((j) => j.score >= minScore && (j.description ?? "").trim().length > 0)
-    .sort((a, b) => b.score - a.score)
+    .filter((j) => j.score >= minScore)
+    .sort((a, b) => {
+      // Primary: keyword relevance (now domain-aware — see scoreJob's domain guard).
+      if (b.score !== a.score) return b.score - a.score;
+      // Tie-break: prefer jobs that carry JD text (a richer, more reliable read).
+      // But description-less postings are NOT excluded — a relevant role must not be
+      // starved of the AI pass just because the scraper returned no description
+      // (title + company + location still inform the model). This previously
+      // silently dropped strong matches whenever the source returned no JD body.
+      return Number(hasDesc(b)) - Number(hasDesc(a));
+    })
     .slice(0, REVIEW_MAX_JOBS);
 
   if (!candidates.length) return { jobs, stats: { gated: 0, reviewed: 0, aiTokens: 0 } };
@@ -184,9 +194,12 @@ export async function geminiRescore(
   let aiTokens = 0;
   let reviewed = 0;
   await mapPool(candidates, CONCURRENCY, async (job) => {
-    const jd = `${job.title ?? ""}\n${job.company ?? ""} — ${job.location ?? ""}\n\n${compactText(
+    const descText = compactText(
       (job.description ?? "").slice(0, MAX_JD_CHARS + 2000) // slice generously, then compact shrinks it
-    ).slice(0, MAX_JD_CHARS)}`;
+    ).slice(0, MAX_JD_CHARS);
+    const jd = `${job.title ?? ""}\n${job.company ?? ""} — ${job.location ?? ""}\n\n${
+      descText || "(No job description was available; assess fit from the title, company, and location.)"
+    }`;
     for (let attempt = 0; attempt <= MAX_RETRIES; attempt++) {
       try {
         const { object, usage } = await generateObject({
