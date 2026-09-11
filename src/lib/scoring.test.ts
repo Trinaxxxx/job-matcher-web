@@ -161,3 +161,84 @@ describe("word-boundary skill matching", () => {
     expect(r.reasons.join(" ")).toMatch(/key skills/);
   });
 });
+
+describe("industry guard (positively-wrong sector vs unknown)", () => {
+  const s = strat({ industryKeywords: ["fintech", "saas", "banking"] });
+
+  it("penalizes a job that names a DIFFERENT recognized industry", () => {
+    const r = scoreJob(
+      { title: "Finance Manager", company: "Acme Manufacturing", description: "Product costing for our automotive plant." },
+      s
+    );
+    expect(r.reasons.join(" ")).toMatch(/off-industry/);
+    expect(r.score).toBeLessThan(50);
+  });
+
+  it("does NOT penalize a job that names no industry at all (unknown != wrong)", () => {
+    const r = scoreJob(
+      { title: "Finance Manager", company: "Private Advertiser", description: "Own budgeting and forecasting." },
+      s
+    );
+    expect(r.reasons.join(" ")).not.toMatch(/off-industry/);
+  });
+
+  it("does NOT penalize a job in one of the user's target industries", () => {
+    const r = scoreJob(
+      { title: "Finance Manager", company: "PayCo", description: "A fast-growing fintech scaling its finance team." },
+      s
+    );
+    expect(r.reasons.join(" ")).not.toMatch(/off-industry/);
+  });
+
+  it("word-boundary safe: 'media' does not match inside 'immediate'", () => {
+    const r = scoreJob(
+      { title: "Finance Manager", company: "PayCo", description: "Immediate start; fintech scale-up." },
+      s
+    );
+    expect(r.reasons.join(" ")).not.toMatch(/off-industry/);
+  });
+
+  it("no industry preference stated → guard is inert", () => {
+    const r = scoreJob(
+      { title: "Finance Manager", company: "Acme Manufacturing", description: "Automotive plant costing." },
+      strat({})
+    );
+    expect(r.reasons.join(" ")).not.toMatch(/off-industry/);
+  });
+});
+
+describe("seniority-ceiling guard (over-reach vs demonstrated level)", () => {
+  it("docks a role 2+ levels above demonstrated seniority", () => {
+    // CV shows mid level; a VP role is a 4-rank reach.
+    const r = scoreJob({ title: "VP of Finance" }, strat({ cvSeniority: "mid" }));
+    expect(r.reasons.join(" ")).toMatch(/levels above your demonstrated seniority/);
+  });
+
+  it("does NOT dock a one-level stretch", () => {
+    // senior (3) → lead/principal (4) is a single-level stretch, allowed.
+    const r = scoreJob({ title: "Principal Analyst" }, strat({ cvSeniority: "senior" }));
+    expect(r.reasons.join(" ")).not.toMatch(/levels above/);
+  });
+
+  it("references demonstrated level, not desired: head-level CV is not docked for a head role", () => {
+    // A candidate whose CV reads at head/director rank is not over-reaching for a
+    // Head role — seniority alone doesn't flag it (function/industry guards do).
+    const r = scoreJob({ title: "Head of FP&A" }, strat({ cvSeniority: "director", seniority: "director" }));
+    expect(r.reasons.join(" ")).not.toMatch(/levels above/);
+  });
+
+  it("ignores titles with no clear level word (plain Manager)", () => {
+    const r = scoreJob({ title: "Finance Manager" }, strat({ cvSeniority: "mid" }));
+    expect(r.reasons.join(" ")).not.toMatch(/levels above/);
+  });
+
+  it("word-boundary safe: 'head' does not match 'headcount'", () => {
+    const r = scoreJob({ title: "Headcount Planning Analyst" }, strat({ cvSeniority: "mid" }));
+    expect(r.reasons.join(" ")).not.toMatch(/levels above/);
+  });
+
+  it("inert when cvSeniority is unknown", () => {
+    const r = scoreJob({ title: "VP of Finance" }, strat({}));
+    expect(r.reasons.join(" ")).not.toMatch(/levels above/);
+  });
+});

@@ -29,6 +29,9 @@ const HINT = "hint mt-0.5";
 
 const STEPS = ["Your CV", "Questionnaire", "Apify key"];
 
+type CvSuggestions = { titles: string[]; skills: string[]; industries: string[] };
+const EMPTY_SUGGESTIONS: CvSuggestions = { titles: [], skills: [], industries: [] };
+
 export default function OnboardingWizard() {
   const router = useRouter();
   const [step, setStep] = useState(0);
@@ -36,6 +39,7 @@ export default function OnboardingWizard() {
   const [apifyKey, setApifyKey] = useState("");
   const [cvFileName, setCvFileName] = useState<string | null>(null);
   const [cvMsg, setCvMsg] = useState<string | null>(null);
+  const [suggestions, setSuggestions] = useState<CvSuggestions>(EMPTY_SUGGESTIONS);
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
 
@@ -58,6 +62,33 @@ export default function OnboardingWizard() {
     }
     setCvFileName(d.fileName);
     setCvMsg(`Read ${d.chars.toLocaleString()} characters from ${d.fileName}.`);
+    setSuggestions({
+      titles: d.suggestions?.titles ?? [],
+      skills: d.suggestions?.skills ?? [],
+      industries: d.suggestions?.industries ?? [],
+    });
+  }
+
+  // Add or remove a suggested keyword from a comma-separated Answers field
+  // (case-insensitive match). Lets the user build a field up — or back down —
+  // by clicking chips instead of typing.
+  function toggleChip(k: keyof Answers, value: string) {
+    setAnswers((a) => {
+      const current = ((a[k] as string | undefined) ?? "").trim();
+      const items = current.split(",").map((s) => s.trim()).filter(Boolean);
+      const already = items.some((x) => x.toLowerCase() === value.toLowerCase());
+      const next = already
+        ? items.filter((x) => x.toLowerCase() !== value.toLowerCase())
+        : [...items, value];
+      return { ...a, [k]: next.join(", ") };
+    });
+  }
+
+  // Whether a given suggestion is already present in a field (so its chip can
+  // render as "added" and stop being clickable).
+  function isChosen(k: keyof Answers, value: string): boolean {
+    const current = ((answers[k] as string | undefined) ?? "").toLowerCase();
+    return current.split(",").map((s) => s.trim()).includes(value.toLowerCase());
   }
 
   // Persist the questionnaire + (optionally) the Apify key. Answers are always
@@ -77,6 +108,36 @@ export default function OnboardingWizard() {
       return false;
     }
     return true;
+  }
+
+  // A row of "from your CV" suggestion chips for one field. Renders nothing when
+  // the CV produced no suggestions for it.
+  function chipRow(k: keyof Answers, items: string[]) {
+    if (!items.length) return null;
+    return (
+      <div className="mt-2 flex flex-wrap items-center gap-1.5">
+        <span className="text-xs text-muted-2">From your CV:</span>
+        {items.map((item) => {
+          const chosen = isChosen(k, item);
+          return (
+            <button
+              key={item}
+              type="button"
+              onClick={() => toggleChip(k, item)}
+              title={chosen ? `Remove "${item}"` : `Add "${item}"`}
+              className={
+                "rounded-full border px-2.5 py-0.5 text-xs transition " +
+                (chosen
+                  ? "border-transparent bg-success/15 text-success hover:bg-[var(--danger)]/15 hover:text-[var(--danger)]"
+                  : "border-[var(--border)] bg-surface-2 text-muted hover:border-accent hover:text-accent")
+              }
+            >
+              {chosen ? "✓ " : "+ "}{item}
+            </button>
+          );
+        })}
+      </div>
+    );
   }
 
   function goToDashboard() {
@@ -143,16 +204,19 @@ export default function OnboardingWizard() {
               <p className={HINT}>Comma-separated. These become your search terms.</p>
               <input className={FIELD} value={answers.targetTitles ?? ""} onChange={set("targetTitles")}
                 placeholder="product manager, program manager" />
+              {chipRow("targetTitles", suggestions.titles)}
             </div>
             <div>
               <label className={LABEL}>Key skills / tools</label>
               <input className={FIELD} value={answers.skills ?? ""} onChange={set("skills")}
                 placeholder="SQL, roadmapping, stakeholder management" />
+              {chipRow("skills", suggestions.skills)}
             </div>
             <div>
               <label className={LABEL}>Preferred industries</label>
               <input className={FIELD} value={answers.industries ?? ""} onChange={set("industries")}
                 placeholder="fintech, SaaS, healthcare" />
+              {chipRow("industries", suggestions.industries)}
             </div>
             <div>
               <label className={LABEL}>Dealbreakers (avoid)</label>

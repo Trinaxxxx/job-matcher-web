@@ -35,7 +35,7 @@ export async function GET(req: NextRequest) {
 
 const patch = z.object({
   id: z.string(),
-  status: z.enum(["New", "Interested", "Applied", "Rejected"]),
+  status: z.enum(["New", "Interested", "Applied", "Rejected", "Offer"]),
 });
 
 export async function PATCH(req: NextRequest) {

@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/db";
 import { getUserId } from "@/lib/auth";
 import { parseCv } from "@/lib/cv";
-import { buildStrategy, type Answers } from "@/lib/strategy";
+import { buildStrategy, suggestFromCv, type Answers } from "@/lib/strategy";
 import { checkRateLimit } from "@/lib/ratelimit";
 
 export const maxDuration = 60;
@@ -46,5 +46,13 @@ export async function POST(req: NextRequest) {
     update: { cvText, cvFileName: file.name, strategy },
   });
 
-  return NextResponse.json({ ok: true, chars: cvText.length, fileName: file.name });
+  return NextResponse.json({
+    ok: true,
+    chars: cvText.length,
+    fileName: file.name,
+    // Keyword suggestions the questionnaire surfaces as clickable chips, so the
+    // user can build up their titles/skills/industries from the CV instead of
+    // typing everything from scratch.
+    suggestions: suggestFromCv(cvText, file.name),
+  });
 }

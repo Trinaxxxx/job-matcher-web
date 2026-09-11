@@ -3,9 +3,14 @@ import { getUserId } from "@/lib/auth";
 import Nav from "@/components/Nav";
 import ResultsTable from "@/components/ResultsTable";
 
-export default async function ResultsPage() {
+export default async function ResultsPage({
+  searchParams,
+}: {
+  searchParams: Promise<{ status?: string }>;
+}) {
   const userId = await getUserId();
   if (!userId) redirect("/login");
+  const { status } = await searchParams;
   return (
     <>
       <Nav />
@@ -20,7 +25,7 @@ export default async function ResultsPage() {
           Ranked by fit. Top roles get an AI read (score 85+ = strong fit) — open “why?” for its summary and the
           keyword reasons.
         </p>
-        <ResultsTable />
+        <ResultsTable initialStatus={status} />
       </main>
     </>
   );

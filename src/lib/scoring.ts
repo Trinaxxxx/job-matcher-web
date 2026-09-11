@@ -3,6 +3,7 @@
 // deterministic first filter (the web equivalent of the local tool's scoring.py).
 
 import type { Strategy } from "./strategy";
+import { INDUSTRY_TERMS } from "./strategy";
 
 export type RawJob = {
   title?: string;
@@ -28,6 +29,21 @@ const SENIORITY_RANK: Record<string, number> = {
 };
 
 const JUNIOR_TITLE_SIGNALS = ["intern", "internship", "graduate program", "fresh graduate", "entry level", "entry-level", "junior", "trainee"];
+
+// Infer the seniority rank a JOB TITLE implies, for the ceiling guard. Returns
+// null for titles that carry no clear level word (a plain "Manager"/"Analyst" is
+// ambiguous — mid to senior depending on org — so we don't infer and don't
+// penalize). Word-boundary anchored so "head" doesn't match "headcount", "lead"
+// doesn't match "leader", etc. Highest signals are checked first.
+function titleSeniorityRank(title: string): number | null {
+  if (/\b(chief|ceo|cfo|coo|cto|cmo|cio|founder|co-founder|managing director|president)\b/.test(title)) return 6;
+  if (/\b(vp|svp|evp|vice president)\b/.test(title)) return 6;
+  if (/\b(head|director)\b/.test(title)) return 5;
+  if (/\b(principal|staff|lead)\b/.test(title)) return 4;
+  if (/\b(senior|sr)\b/.test(title)) return 3;
+  if (/\b(junior|jr|associate|entry|graduate|intern|trainee)\b/.test(title)) return 1;
+  return null;
+}
 
 function has(text: string, needle: string): boolean {
   return text.includes(needle.toLowerCase());
@@ -187,6 +203,53 @@ export function scoreJob(job: RawJob, s: Strategy): ScoreResult {
     if (!core.length) {
       score -= 20;
       reasons.push(`-20 none of your key skills/industries (${s.coreKeywords.slice(0, 5).join(", ")}) found — likely off-domain`);
+    }
+  }
+
+  // Industry guard. Distinct from the domain guard above: that one fires when a
+  // job hits NONE of the user's skills+industries; this one enforces INDUSTRY fit
+  // specifically, because a job can match a generic skill ("financial modelling")
+  // yet sit in a plainly wrong sector (a fintech/SaaS candidate matched to a
+  // manufacturing or automotive finance role). We only penalize a POSITIVELY wrong
+  // industry — the JD/company names a recognized sector that is NOT one the user
+  // wants — not merely an unstated one: many JDs never name their industry, and
+  // "unknown" must not be treated as "wrong" or relevant roles get starved. Uses
+  // word-boundary matching so terms like "media"/"mining"/"energy" don't match
+  // inside "immediate"/"examining"/"synergy". Fires only when the user stated
+  // industries, so strategies stored before this field keep prior behavior.
+  if (s.industryKeywords?.length) {
+    const industryText = `${text}\n${company}`;
+    const wantedHit = countHits(industryText, s.industryKeywords, true).hits;
+    if (!wantedHit.length) {
+      const foreign = INDUSTRY_TERMS.filter(
+        (t) => !s.industryKeywords!.includes(t) && hasWord(industryText, t)
+      );
+      if (foreign.length) {
+        score -= 18;
+        reasons.push(
+          `-18 off-industry: role is in ${foreign.slice(0, 2).join("/")}, not your target ${s.industryKeywords.slice(0, 3).join(", ")}`
+        );
+      }
+    }
+  }
+
+  // Seniority-ceiling guard. The exclusion above guards the FLOOR (entry-level
+  // roles for a mid+ candidate); this guards the CEILING — a role whose title
+  // sits well above what the CV actually demonstrates. It references cvSeniority
+  // (DEMONSTRATED level), never the desired `seniority`, so an aspirational target
+  // can't raise the ceiling and let over-reach roles through. Only a gap of 2+
+  // ranks is docked: a one-level stretch (e.g. senior → lead) is normal and stays
+  // unpenalized, and titles with no clear level word (plain "Manager") return null
+  // and are left alone. Fires only when cvSeniority is known, so strategies stored
+  // before this field keep prior behavior.
+  if (s.cvSeniority) {
+    const candRank = SENIORITY_RANK[s.cvSeniority];
+    const jobRank = titleSeniorityRank(title);
+    if (candRank !== undefined && jobRank !== null && jobRank - candRank >= 2) {
+      score -= 15;
+      reasons.push(
+        `-15 role sits ${jobRank - candRank} levels above your demonstrated seniority (${s.cvSeniority}) — likely a reach`
+      );
     }
   }
 

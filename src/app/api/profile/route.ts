@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/db";
 import { getUserId } from "@/lib/auth";
 import { encrypt } from "@/lib/crypto";
-import { buildStrategy, ProfileBodySchema } from "@/lib/strategy";
+import { buildStrategy, suggestFromCv, ProfileBodySchema } from "@/lib/strategy";
 import { checkRateLimit } from "@/lib/ratelimit";
 
 export async function GET() {
@@ -20,6 +20,9 @@ export async function GET() {
     hasCvText: !!profile?.cvText,
     hasApifyKey: !!user?.apifyKeyEnc,
     hasStrategy: !!profile?.strategy,
+    // Keyword chips derived from the CV already on file, so the questionnaire can
+    // offer them on load — not only right after a fresh upload.
+    suggestions: profile?.cvText ? suggestFromCv(profile.cvText, profile.cvFileName ?? undefined) : null,
   });
 }
 
