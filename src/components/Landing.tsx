@@ -1,5 +1,6 @@
 import Link from "next/link";
 import ThemeToggle from "./ThemeToggle";
+import DemoButton from "./DemoButton";
 
 /* ------------------------------------------------------------------ *
  * Synthetic, user-approved hero data. Companies are invented; the rows
@@ -228,18 +229,18 @@ function Hero() {
           made the list.
         </p>
         <div className="mt-8 flex flex-wrap items-center gap-3">
-          <Link href="/signup" className="btn btn-primary px-5 py-2.5 text-base">
-            Find my matches
+          <DemoButton className="btn btn-primary px-5 py-2.5 text-base">
+            Try the live demo
             <Icon name="rank" className="h-[18px] w-[18px]" />
-          </Link>
-          <Link href="#how" className="btn btn-ghost px-5 py-2.5 text-base">
-            See how it works
+          </DemoButton>
+          <Link href="/signup" className="btn btn-ghost px-5 py-2.5 text-base">
+            Set up with my CV
           </Link>
         </div>
         <p className="mt-5 flex flex-wrap items-center gap-x-2 gap-y-1 text-sm text-muted">
-          <span>Runs on your own Apify key</span>
+          <span>No sign-up — one click to a ranked shortlist</span>
           <span aria-hidden className="text-muted">·</span>
-          <span>Fresh roles from the last 7 days</span>
+          <span>Sample CV and jobs, scored live</span>
         </p>
       </div>
 
@@ -445,9 +446,12 @@ function FinalCta() {
           Your next role is already posted. Let&apos;s rank it.
         </h2>
         <div className="mt-8 flex flex-wrap items-center justify-center gap-3">
-          <Link href="/signup" className="btn btn-primary px-6 py-3 text-base">
-            Find my matches
+          <DemoButton className="btn btn-primary px-6 py-3 text-base">
+            Try the live demo
             <Icon name="rank" className="h-[18px] w-[18px]" />
+          </DemoButton>
+          <Link href="/signup" className="btn btn-ghost px-6 py-3 text-base">
+            Set up with my CV
           </Link>
         </div>
         <p className="mt-5 text-sm text-muted">
