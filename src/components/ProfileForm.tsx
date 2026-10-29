@@ -1,5 +1,10 @@
 "use client";
 import { useEffect, useState } from "react";
+import { RADIUS_OPTIONS_KM } from "@/lib/geo";
+import { REMOTE_MODE_OPTIONS } from "@/lib/remote";
+import type { MatchMode } from "@/lib/strategy";
+import { KeywordPanel, MatchModeToggle } from "@/components/KeywordMode";
+import SalaryFields from "@/components/SalaryFields";
 
 type Answers = {
   targetTitles?: string;
@@ -7,15 +12,22 @@ type Answers = {
   industries?: string;
   dealbreakers?: string;
   locations?: string;
+  radiusKm?: string;
   excludeLocations?: string;
   minSalary?: string;
   currency?: string;
+  salaryPeriod?: "month" | "year";
   seniority?: string;
   remoteOk?: boolean;
+  remoteMode?: "" | "remote" | "nomad";
   careerGoal?: string;
   careerMove?: string;
   priorities?: string;
   workStyle?: string;
+  matchMode?: MatchMode;
+  includeAll?: string;
+  includeAny?: string;
+  excludeAny?: string;
 };
 
 const FIELD = "field";
@@ -200,8 +212,12 @@ export default function ProfileForm() {
     }
   }
 
-  async function save(e: React.FormEvent) {
+  function save(e: React.FormEvent) {
     e.preventDefault();
+    return persist(answers);
+  }
+
+  async function persist(next: Answers) {
     if (busy) return;
     setBusy(true);
     setSaveMsg(null);
@@ -209,7 +225,7 @@ export default function ProfileForm() {
       const res = await fetch("/api/profile", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ answers, apifyKey: apifyKey || undefined }),
+        body: JSON.stringify({ answers: next, apifyKey: apifyKey || undefined }),
       });
       const d = await res.json().catch(() => ({}));
       if (!res.ok) {
@@ -228,12 +244,43 @@ export default function ProfileForm() {
     }
   }
 
+  // Keyword mode has no AI pass: the word lists lead, the CV is optional, and the
+  // AI-only "what you want next" block is hidden.
+  const keywordMode = answers.matchMode === "keywords";
+  const num = keywordMode ? { cv: 2, q: 3, apify: 4 } : { cv: 1, q: 2, apify: 4 };
+
   return (
     <div className="mt-6 flex flex-col gap-8">
+      {/* Match mode */}
+      <section className="card card-lift p-6">
+        <h2 className="font-display text-lg font-semibold">How should we match jobs?</h2>
+        <p className={HINT + " mb-4"}>You can switch at any time. Your other answers are kept.</p>
+        <MatchModeToggle value={answers.matchMode} onChange={(m) => patchAnswers({ matchMode: m })} />
+      </section>
+
+      {keywordMode && (
+        <section className="card card-lift p-6">
+          <h2 className="font-display text-lg font-semibold">1. Your keywords</h2>
+          <div className="mt-4">
+            <KeywordPanel
+              answers={answers}
+              onChange={patchAnswers}
+              onImported={(patch) => persist({ ...answers, ...patch })}
+            />
+          </div>
+        </section>
+      )}
+
       {/* CV upload */}
       <section className="card card-lift p-6">
-        <h2 className="font-display text-lg font-semibold">1. Your CV</h2>
-        <p className={HINT} id="cv-hint">PDF, DOCX, or TXT (max 5 MB). We extract the text to match your background.</p>
+        <h2 className="font-display text-lg font-semibold">
+          {num.cv}. Your CV{keywordMode && <span className="font-normal text-muted"> (optional)</span>}
+        </h2>
+        <p className={HINT} id="cv-hint">
+          {keywordMode
+            ? "PDF, DOCX, or TXT (max 5 MB). Not needed for keyword matching. If you add one, we suggest keywords from it below."
+            : "PDF, DOCX, or TXT (max 5 MB). We extract the text to match your background."}
+        </p>
         <input
           type="file"
           accept=".pdf,.docx,.txt"
@@ -256,7 +303,9 @@ export default function ProfileForm() {
       {/* Questionnaire */}
       <form onSubmit={save} noValidate className="flex flex-col gap-8">
         <section className="card card-lift p-6">
-          <h2 className="font-display text-lg font-semibold">2. Questionnaire</h2>
+          <h2 className="font-display text-lg font-semibold">
+            {num.q}. {keywordMode ? "Search preferences" : "Questionnaire"}
+          </h2>
           <div className="mt-4 grid gap-4">
             <div>
               <label className={LABEL} htmlFor="targetTitles">Target job titles</label>
@@ -286,9 +335,17 @@ export default function ProfileForm() {
             <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
               <div>
                 <label className={LABEL} htmlFor="locations">Location</label>
-                <p className={HINT}>One city or country only — the scrape runs a single location.</p>
-                <input id="locations" className={FIELD} maxLength={MAX.locations} value={answers.locations ?? ""} onChange={set("locations")}
-                  placeholder="Kuala Lumpur" />
+                <p className={HINT}>One city, suburb or postcode. Pick a radius to see only jobs within that distance.</p>
+                <div className="flex gap-2">
+                  <input id="locations" className={`${FIELD} min-w-0 flex-1`} maxLength={MAX.locations} value={answers.locations ?? ""} onChange={set("locations")}
+                    placeholder="Bangsar, Kuala Lumpur" />
+                  <select id="radiusKm" aria-label="Search radius" className={`${FIELD} w-auto`} value={answers.radiusKm ?? ""} onChange={set("radiusKm")}>
+                    <option value="">Any distance</option>
+                    {RADIUS_OPTIONS_KM.map((km) => (
+                      <option key={km} value={String(km)}>Within {km} km</option>
+                    ))}
+                  </select>
+                </div>
               </div>
               <div>
                 <label className={LABEL} htmlFor="excludeLocations">Locations to avoid</label>
@@ -296,16 +353,9 @@ export default function ProfileForm() {
                   placeholder="United States, India" />
               </div>
             </div>
-            <div className="grid grid-cols-2 gap-4 sm:grid-cols-3">
+            <SalaryFields answers={answers} onChange={patchAnswers} />
+            <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
               <div>
-                <label className={LABEL} htmlFor="minSalary">Min salary</label>
-                <input id="minSalary" className={FIELD} inputMode="numeric" maxLength={MAX.minSalary} value={answers.minSalary ?? ""} onChange={set("minSalary")} placeholder="10000" />
-              </div>
-              <div>
-                <label className={LABEL} htmlFor="currency">Currency</label>
-                <input id="currency" className={FIELD} maxLength={MAX.currency} value={answers.currency ?? ""} onChange={set("currency")} placeholder="RM" />
-              </div>
-              <div className="col-span-2 sm:col-span-1">
                 <label className={LABEL} htmlFor="seniority">Seniority</label>
                 <select id="seniority" className={FIELD} value={answers.seniority ?? ""} onChange={set("seniority")}>
                   <option value="">Any</option>
@@ -323,11 +373,22 @@ export default function ProfileForm() {
                 onChange={(e) => patchAnswers({ remoteOk: e.target.checked })} />
               Open to remote roles
             </label>
+            {answers.remoteOk && (
+              <div>
+                <label className={LABEL} htmlFor="remoteMode">Which remote roles</label>
+                <p className={HINT}>Remote ads usually only hire from certain countries. We use the country in your Location to keep the ones you can take.</p>
+                <select id="remoteMode" className={FIELD} value={answers.remoteMode ?? ""} onChange={set("remoteMode")}>
+                  {REMOTE_MODE_OPTIONS.map((o) => (
+                    <option key={o.value} value={o.value}>{o.label}</option>
+                  ))}
+                </select>
+              </div>
+            )}
           </div>
         </section>
 
         {/* Intent — AI-only signals */}
-        <section className="card card-lift p-6">
+        {!keywordMode && <section className="card card-lift p-6">
           <h2 className="font-display text-lg font-semibold">3. What you want next</h2>
           <p className={HINT}>
             Optional, but recommended. Your CV shows what you&apos;ve done — these tell the AI matcher what
@@ -364,11 +425,11 @@ export default function ProfileForm() {
                 placeholder="individual contributor, small team, startup over corporate" />
             </div>
           </div>
-        </section>
+        </section>}
 
         {/* Apify key */}
         <section className="card card-lift p-6">
-          <h2 className="font-display text-lg font-semibold">4. Apify API key</h2>
+          <h2 className="font-display text-lg font-semibold">{num.apify}. Apify API key</h2>
           <p className={HINT} id="apify-hint">
             Your own key from{" "}
             <a href="https://apify.com/" target="_blank" rel="noopener noreferrer"

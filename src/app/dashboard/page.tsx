@@ -31,7 +31,11 @@ export default async function Dashboard() {
   const hasCv = !!profile?.cvText;
   const hasAnswers = !!profile?.answers;
   const hasApify = !!user?.apifyKeyEnc;
-  const ready = hasCv && hasAnswers && hasApify;
+  // Keyword-only matching never reads the CV, so it isn't required to search.
+  const kwAnswers = profile?.answers as { matchMode?: string; includeAll?: string; includeAny?: string } | null;
+  const keywordMode = kwAnswers?.matchMode === "keywords";
+  const hasKeywords = !!(kwAnswers?.includeAll?.trim() || kwAnswers?.includeAny?.trim());
+  const ready = (hasCv || keywordMode) && hasAnswers && hasApify;
 
   // Count per status (default 0), preserving the funnel order above.
   const counts: Record<string, number> = Object.fromEntries(STAGES.map((s) => [s.status, 0]));
@@ -58,7 +62,9 @@ export default async function Dashboard() {
       : "Set a status on a role to start tracking your funnel.";
 
   const steps = [
-    { ok: hasCv, label: "Upload your CV", hint: "Your experience shapes how roles are ranked." },
+    keywordMode
+      ? { ok: hasKeywords, label: "Choose your keywords", hint: "Words a job must contain, and words that rule it out." }
+      : { ok: hasCv, label: "Upload your CV", hint: "Your experience shapes how roles are ranked." },
     { ok: hasAnswers, label: "Set your preferences", hint: "Target titles, skills, locations, and salary." },
     { ok: hasApify, label: "Connect a scraping key", hint: "An Apify API key lets the app fetch live listings for you." },
   ];
@@ -176,7 +182,7 @@ export default async function Dashboard() {
             label="Strong fits"
             value={strongCount}
             href="/results"
-            hint="AI-scored 85+ — worth your time first"
+            hint={keywordMode ? "AI-scored 85+ (AI match is off)" : "AI-scored 85+ — worth your time first"}
           />
           <Stat
             label="Awaiting review"
@@ -197,7 +203,9 @@ export default async function Dashboard() {
         <section className="card card-lift mt-5 p-6">
           <h2 className="font-display text-lg font-semibold">Find matches</h2>
           <p className="mt-1 max-w-prose text-sm text-muted">
-            Pulls recent job listings, scores them against your CV and preferences, and highlights the strongest fits.
+            {keywordMode
+              ? "Pulls recent job listings, keeps the ones that contain your keywords, and ranks them by how many they match."
+              : "Pulls recent job listings, scores them against your CV and preferences, and highlights the strongest fits."}
           </p>
           <div className="mt-5">
             <RunSearch disabled={!ready} />

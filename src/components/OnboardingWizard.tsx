@@ -1,6 +1,11 @@
 "use client";
 import { useState } from "react";
 import { useRouter } from "next/navigation";
+import { RADIUS_OPTIONS_KM } from "@/lib/geo";
+import { REMOTE_MODE_OPTIONS } from "@/lib/remote";
+import type { MatchMode } from "@/lib/strategy";
+import { KeywordPanel, MatchModeToggle } from "@/components/KeywordMode";
+import SalaryFields from "@/components/SalaryFields";
 
 // First-run setup wizard shown to guests and first-time users. Walks through
 // CV upload → questionnaire → Apify key, saving as it goes, then hands off to
@@ -12,22 +17,30 @@ type Answers = {
   industries?: string;
   dealbreakers?: string;
   locations?: string;
+  radiusKm?: string;
   excludeLocations?: string;
   minSalary?: string;
   currency?: string;
+  salaryPeriod?: "month" | "year";
   seniority?: string;
   remoteOk?: boolean;
+  remoteMode?: "" | "remote" | "nomad";
   careerGoal?: string;
   careerMove?: string;
   priorities?: string;
   workStyle?: string;
+  matchMode?: MatchMode;
+  includeAll?: string;
+  includeAny?: string;
+  excludeAny?: string;
 };
 
 const FIELD = "field";
 const LABEL = "label";
 const HINT = "hint mt-0.5";
 
-const STEPS = ["Your CV", "Questionnaire", "Apify key"];
+const STEPS = ["Mode & CV", "Questionnaire", "Apify key"];
+const KEYWORD_STEPS = ["Mode & CV", "Keywords", "Apify key"];
 
 type CvSuggestions = { titles: string[]; skills: string[]; industries: string[] };
 const EMPTY_SUGGESTIONS: CvSuggestions = { titles: [], skills: [], industries: [] };
@@ -42,6 +55,12 @@ export default function OnboardingWizard() {
   const [suggestions, setSuggestions] = useState<CvSuggestions>(EMPTY_SUGGESTIONS);
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
+
+  // Keyword mode has no AI pass, so the CV is optional and the AI-only intent
+  // questions are hidden.
+  const keywordMode = answers.matchMode === "keywords";
+  const steps = keywordMode ? KEYWORD_STEPS : STEPS;
+  const patch = (p: Partial<Answers>) => setAnswers((a) => ({ ...a, ...p }));
 
   const set = (k: keyof Answers) => (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement>) =>
     setAnswers((a) => ({ ...a, [k]: e.target.value }));
@@ -166,7 +185,7 @@ export default function OnboardingWizard() {
 
       {/* Progress */}
       <ol className="mt-6 flex items-center gap-2 text-xs">
-        {STEPS.map((label, i) => (
+        {steps.map((label, i) => (
           <li key={label} className="flex flex-1 items-center gap-2">
             <span className={
               "flex h-6 w-6 shrink-0 items-center justify-center rounded-full text-[11px] font-medium " +
@@ -175,7 +194,7 @@ export default function OnboardingWizard() {
               {i < step ? "✓" : i + 1}
             </span>
             <span className={i === step ? "font-medium" : "text-muted"}>{label}</span>
-            {i < STEPS.length - 1 && <span className="h-px flex-1 bg-[var(--border)]" />}
+            {i < steps.length - 1 && <span className="h-px flex-1 bg-[var(--border)]" />}
           </li>
         ))}
       </ol>
@@ -183,8 +202,18 @@ export default function OnboardingWizard() {
       <div className="mt-6 card card-lift p-6">
         {step === 0 && (
           <div>
-            <h2 className="font-display text-lg font-semibold">Upload your CV</h2>
-            <p className={HINT}>PDF, DOCX, or TXT (max 5 MB). We extract the text to match your background — skip if you&apos;d rather match on the questionnaire alone.</p>
+            <h2 className="font-display text-lg font-semibold">How should we match jobs?</h2>
+            <p className={HINT + " mb-4"}>You can switch later on your Profile.</p>
+            <MatchModeToggle value={answers.matchMode} onChange={(m) => patch({ matchMode: m })} />
+            <hr className="my-6 border-[var(--border)]" />
+            <h2 className="font-display text-lg font-semibold">
+              Upload your CV{keywordMode && <span className="font-normal text-muted"> (optional)</span>}
+            </h2>
+            <p className={HINT}>
+              {keywordMode
+                ? "PDF, DOCX, or TXT (max 5 MB). Not needed for keyword matching. Skip it and use your own AI chat on the next step instead."
+                : <>PDF, DOCX, or TXT (max 5 MB). We extract the text to match your background — skip if you&apos;d rather match on the questionnaire alone.</>}
+            </p>
             <input
               type="file"
               accept=".pdf,.docx,.txt"
@@ -198,7 +227,16 @@ export default function OnboardingWizard() {
 
         {step === 1 && (
           <div className="grid gap-4">
-            <h2 className="font-display text-lg font-semibold">Tell us what you&apos;re looking for</h2>
+            <h2 className="font-display text-lg font-semibold">
+              {keywordMode ? "Choose your keywords" : <>Tell us what you&apos;re looking for</>}
+            </h2>
+            {keywordMode && (
+              <>
+                <KeywordPanel answers={answers} onChange={patch} />
+                <hr className="border-[var(--border)]" />
+                <p className="text-sm font-medium">Search preferences</p>
+              </>
+            )}
             <div>
               <label className={LABEL}>Target job titles</label>
               <p className={HINT}>Comma-separated. These become your search terms.</p>
@@ -226,9 +264,15 @@ export default function OnboardingWizard() {
             <div className="grid grid-cols-2 gap-4">
               <div>
                 <label className={LABEL}>Location</label>
-                <p className={HINT}>One city or country.</p>
+                <p className={HINT}>City, suburb or postcode.</p>
                 <input className={FIELD} value={answers.locations ?? ""} onChange={set("locations")}
-                  placeholder="Kuala Lumpur" />
+                  placeholder="Bangsar, Kuala Lumpur" />
+                <select aria-label="Search radius" className={`${FIELD} mt-2`} value={answers.radiusKm ?? ""} onChange={set("radiusKm")}>
+                  <option value="">Any distance</option>
+                  {RADIUS_OPTIONS_KM.map((km) => (
+                    <option key={km} value={String(km)}>Within {km} km</option>
+                  ))}
+                </select>
               </div>
               <div>
                 <label className={LABEL}>Seniority</label>
@@ -243,22 +287,21 @@ export default function OnboardingWizard() {
                 </select>
               </div>
             </div>
-            <div className="grid grid-cols-2 gap-4">
-              <div>
-                <label className={LABEL}>Min salary</label>
-                <input className={FIELD} value={answers.minSalary ?? ""} onChange={set("minSalary")} placeholder="10000" />
-              </div>
-              <div>
-                <label className={LABEL}>Currency</label>
-                <input className={FIELD} value={answers.currency ?? ""} onChange={set("currency")} placeholder="RM" />
-              </div>
-            </div>
+            <SalaryFields answers={answers} onChange={patch} />
             <label className="flex items-center gap-2 text-sm">
               <input type="checkbox" className="accent-[var(--accent)]" checked={!!answers.remoteOk}
                 onChange={(e) => setAnswers((a) => ({ ...a, remoteOk: e.target.checked }))} />
               Open to remote roles
             </label>
+            {answers.remoteOk && (
+              <select aria-label="Which remote roles" className={FIELD} value={answers.remoteMode ?? ""} onChange={set("remoteMode")}>
+                {REMOTE_MODE_OPTIONS.map((o) => (
+                  <option key={o.value} value={o.value}>{o.label}</option>
+                ))}
+              </select>
+            )}
 
+            {!keywordMode && <>
             <hr className="border-[var(--border)]" />
             <p className="text-sm font-medium">What you want next</p>
             <p className={HINT}>These tell the AI matcher what you&apos;re after, so it scores fit beyond skill overlap.</p>
@@ -289,6 +332,7 @@ export default function OnboardingWizard() {
               <input className={FIELD} value={answers.workStyle ?? ""} onChange={set("workStyle")}
                 placeholder="individual contributor, small team, startup over corporate" />
             </div>
+            </>}
           </div>
         )}
 
