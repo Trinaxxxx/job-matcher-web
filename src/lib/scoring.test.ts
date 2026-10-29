@@ -76,6 +76,28 @@ describe("salary floor as a hard filter", () => {
     expect(scoreJob({ title: "Sales Manager", salary: "Negotiable" }, strat({ minSalary: 10000 })).excluded).toBe(false);
     expect(scoreJob({ title: "Sales Manager" }, strat({ minSalary: 10000 })).excluded).toBe(false);
   });
+
+  it("keeps a range whose top reaches the floor", () => {
+    const r = scoreJob({ title: "Sales Manager", salary: "RM 8,000 – RM 12,000 per month" }, strat({ minSalary: 10000 }));
+    expect(r.excluded).toBe(false);
+    expect(r.reasons.join(" ")).toMatch(/meets your floor/);
+  });
+
+  it("keeps pay within 10% under the floor, flagged", () => {
+    const r = scoreJob({ title: "Sales Manager", salary: "RM 9,200 per month" }, strat({ minSalary: 10000 }));
+    expect(r.excluded).toBe(false);
+    expect(r.reasons.join(" ")).toMatch(/within 10% of your floor/);
+  });
+
+  it("keeps pay with no period that is implausibly low (a day rate), as unclear", () => {
+    const r = scoreJob({ title: "Software Engineer - Freelance", salary: "EUR 300" }, strat({ minSalary: 45000, currency: "EUR", salaryPeriod: "year" }));
+    expect(r.excluded).toBe(false);
+    expect(r.reasons.join(" ")).toMatch(/unclear/);
+  });
+
+  it("still excludes a no-period figure that is plausibly monthly and clearly below", () => {
+    expect(scoreJob({ title: "Sales Manager", salary: "RM 3,000" }, strat({ minSalary: 6000, currency: "MYR" })).excluded).toBe(true);
+  });
 });
 
 describe("location as a strong signal", () => {

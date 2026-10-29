@@ -3,18 +3,27 @@
 // strategy.md in the local Python tool — it works for any job seeker.
 
 import { z } from "zod";
+import { parseSalaryFloor, resolvePay, type FloorPeriod } from "./salary";
+
+export type RemoteMode = "remote" | "nomad";
 
 export type Answers = {
   targetTitles?: string;     // e.g. "product manager, program manager"
   skills?: string;           // e.g. "SQL, roadmapping, stakeholder management"
   industries?: string;       // preferred industries / domains
   dealbreakers?: string;     // things to avoid (roles, industries, words)
-  locations?: string;        // preferred locations
+  locations?: string;        // preferred location: city, suburb or postcode
+  radiusKm?: string;         // optional: only keep jobs within this many km of `locations` ("" = any distance)
   excludeLocations?: string; // locations to avoid
-  minSalary?: string;        // numeric, monthly or annual — free text
-  currency?: string;         // e.g. RM, SGD, USD
+  minSalary?: string;        // free text: "12000", "12k", "12,000 - 15,000"
+  currency?: string;         // ISO code (MYR, AUD…); legacy free text ("RM") still accepted
+  salaryPeriod?: FloorPeriod; // whether minSalary is per month or per year
   seniority?: string;        // "intern" | "junior" | "mid" | "senior" | "lead" | "director"
   remoteOk?: boolean;
+  // How remote roles fit in (only read when remoteOk): "" = local jobs plus remote
+  // roles open to the user's country; "remote" = remote roles only; "nomad" =
+  // remote roles open worldwide only (work from anywhere). See lib/remote.ts.
+  remoteMode?: "" | RemoteMode;
   // --- Intent block: read only by the AI pass, not the keyword scorer. These
   // capture what the candidate WANTS next (which the CV can't state) so Gemini
   // can judge fit in the ambiguous mid-range, not just skill overlap.
@@ -22,6 +31,21 @@ export type Answers = {
   careerMove?: string;       // "same-field" | "change-industry" | "change-function" | "step-up" | "returning" | "first-role"
   priorities?: string;       // what matters most, ideally ranked (comp, growth, WLB, mission…)
   workStyle?: string;        // IC vs manager, company size, team/context preferences
+  // --- Match mode. "keywords" skips the AI pass entirely and filters jobs on
+  // plain word lists instead (see keywordFilter in Strategy). Absent = "ai".
+  matchMode?: MatchMode;
+  includeAll?: string;       // job must contain EVERY one of these
+  includeAny?: string;       // job must contain AT LEAST ONE of these (more = ranked higher)
+  excludeAny?: string;       // job is dropped if it contains ANY of these
+};
+
+export type MatchMode = "ai" | "keywords";
+
+// Hard word filters applied to a job's title + description in keyword mode.
+export type KeywordFilter = {
+  includeAll: string[];
+  includeAny: string[];
+  excludeAny: string[];
 };
 
 export type Strategy = {
@@ -45,9 +69,18 @@ export type Strategy = {
   searchKeywords?: string[];
   excludeKeywords: string[];
   locations: string[];
+  // When set, the search drops every job further than this from locations[0]
+  // (geocoded; see lib/geo.ts). Absent = no distance filter.
+  radiusKm?: number;
+  // The full location answer ("Surry Hills, Sydney"), uncut by splitList, which
+  // would otherwise hand the geocoder just "surry hills". Set only with radiusKm.
+  radiusCenter?: string;
   excludeLocations: string[];
   minSalary?: number;
-  currency?: string;
+  currency?: string;          // ISO code when recognised, else as typed
+  // Period of minSalary. Absent on strategies stored before it existed, which
+  // the scorer reads as "month" (the old behaviour).
+  salaryPeriod?: FloorPeriod;
   seniority?: string;
   // The candidate's DEMONSTRATED seniority, inferred from the CV — distinct from
   // `seniority`, which is what they WANT (and may be aspirational). Used by the
@@ -56,6 +89,13 @@ export type Strategy = {
   // back-compat with strategies stored before this field existed.
   cvSeniority?: string;
   remoteOk: boolean;
+  // Set only for remote-only searches (implies remoteOk). Absent = local jobs,
+  // plus remote roles open to the user's country when remoteOk.
+  remoteMode?: RemoteMode;
+  // "keywords" = no AI pass; jobs are filtered on keywordFilter instead. Optional
+  // for back-compat with strategies stored before this field existed (= "ai").
+  matchMode?: MatchMode;
+  keywordFilter?: KeywordFilter;
   // AI-only signals. The keyword scorer ignores these; strategyDigest() surfaces
   // them to Gemini as free-text intent so it can weigh fit beyond skill overlap.
   intent?: {
@@ -87,15 +127,22 @@ export const AnswersSchema = z
     industries: optStr(500),
     dealbreakers: optStr(1000),
     locations: optStr(500),
+    radiusKm: optStr(10),
     excludeLocations: optStr(500),
     minSalary: optStr(50),
     currency: optStr(20),
+    salaryPeriod: z.enum(["month", "year"]).optional(),
     seniority: optStr(50),
     remoteOk: z.boolean().optional(),
+    remoteMode: z.enum(["", "remote", "nomad"]).optional(),
     careerGoal: optStr(1000),
     careerMove: optStr(50),
     priorities: optStr(500),
     workStyle: optStr(500),
+    matchMode: z.enum(["ai", "keywords"]).optional(),
+    includeAll: optStr(500),
+    includeAny: optStr(2000),
+    excludeAny: optStr(1000),
   })
   .strip() satisfies z.ZodType<Answers>;
 
@@ -297,6 +344,20 @@ function splitList(s?: string): string[] {
     .filter(Boolean);
 }
 
+// Like splitList, but keeps "/" inside an item: keyword-mode terms are matched
+// literally, so "ci/cd" or "ap/ar" must survive as one keyword.
+function splitKeywords(s?: string): string[] {
+  if (!s) return [];
+  return Array.from(
+    new Set(
+      sanitizeUserText(s)
+        .split(/[,\n;]+/)
+        .map((x) => x.trim().toLowerCase())
+        .filter(Boolean)
+    )
+  );
+}
+
 // Extract confident keyphrases from CV text, most salient first. Unlike plain
 // token counting, this also captures adjacent-word BIGRAMS ("product management",
 // "machine learning", "data analysis") that single-token counting shattered into
@@ -364,6 +425,63 @@ export const INDUSTRY_TERMS = [
   "transportation", "aviation", "cybersecurity", "blockchain", "crypto",
 ];
 
+// Extract skills from a dedicated section like "TECHNICAL & COMMERCIAL TOOLKIT",
+// "KEY SKILLS", "CORE COMPETENCIES", etc. These sections list each skill once
+// (by design — a curated list avoids repeating itself), so the recurrence-based
+// keyphrasesFromCv filter (n≥2) misses them entirely. Instead we detect the
+// section heading and parse its bullet/separator-delimited items directly.
+const SKILL_SECTION_RE =
+  /^[ \t]*(?:technical|key|core|professional|relevant)?\s*(?:&|and)?\s*(?:commercial\s+)?(?:skills?|toolkit|competenc(?:y|ies)|proficienc(?:y|ies)|expertise|qualifications|capabilities|tools?)(?:\s+(?:&|and)\s+\w+)*\s*$/im;
+
+function skillsFromSection(cvText: string): string[] {
+  if (!cvText) return [];
+  const lines = cvText.split("\n");
+  let sectionStart = -1;
+  for (let i = 0; i < lines.length; i++) {
+    if (SKILL_SECTION_RE.test(lines[i].trim())) {
+      sectionStart = i + 1;
+      break;
+    }
+  }
+  if (sectionStart < 0) return [];
+
+  // Collect lines until the next all-caps section heading or end of text.
+  const sectionLines: string[] = [];
+  for (let i = sectionStart; i < lines.length; i++) {
+    const line = lines[i].trim();
+    if (!line) continue;
+    // Stop at the next section heading: an all-caps line with ≥2 words that
+    // doesn't start with a bullet character (so "SAP ERP" inside a skills list
+    // doesn't false-positive as a heading).
+    if (/^[A-Z][A-Z &/,]{4,}$/.test(line) && !/^[•\-–—*]/.test(line)) break;
+    sectionLines.push(line);
+  }
+
+  // Parse items: split on bullet chars and newlines. Hyphens only count as
+  // bullets when followed by whitespace ("- SAP ERP") so "E-Invoicing" stays
+  // intact. Pipes and "/" within an item are kept ("AP/AR", "Salesforce / Zoho").
+  const raw = sectionLines
+    .join("\n")
+    .split(/[•–—*\n]+|(?<=^|\s)-(?=\s)/gm)
+    .map((s) => s.trim())
+    .filter(Boolean);
+
+  const skills: string[] = [];
+  const seen = new Set<string>();
+  for (const item of raw) {
+    // Strip sub-heading labels like "Financial & Analytical", "Systems &
+    // Automation", "Commercial & Operations" — category names, not skills.
+    // These are short title-case phrases whose words are all capitalised.
+    if (/^[A-Z][\w]+(?: [&] [A-Z][\w]*)+$/.test(item) && item.split(" ").length <= 4) continue;
+    const lower = item.toLowerCase().replace(/\s+/g, " ").trim();
+    if (lower.length < 3 || seen.has(lower)) continue;
+    if (STOPWORDS.has(lower) || isGeo(lower)) continue;
+    seen.add(lower);
+    skills.push(lower);
+  }
+  return skills;
+}
+
 // Keyword suggestions pulled from a CV to prefill the questionnaire — the same
 // deterministic extraction buildStrategy() uses, exposed for the UI so a user
 // can click to add rather than type from scratch. Nothing here is committed on
@@ -372,14 +490,6 @@ export type CvSuggestions = { titles: string[]; skills: string[]; industries: st
 
 export function suggestFromCv(cvText: string, fileName?: string): CvSuggestions {
   const phrases = keyphrasesFromCv(cvText, 40);
-  // Titles, most confident signal first: the role stated in the FILE NAME (a CV
-  // body describes past jobs; a filename like "Jane_Doe_Senior Sales Manager.pdf"
-  // states the role the candidate is targeting right now — the strongest signal
-  // available), then the candidate's own headline/tagline (if the CV has one),
-  // then one-off titles stated in headings/summary, then any recurring
-  // role-title bigrams the keyphrase pass also found. Geos are already excluded
-  // by titleFromFileName/titlesFromCv/headlineTitleFromCv; also guard the
-  // recurring set.
   const fileTitle = titleFromFileName(fileName);
   const headline = headlineTitleFromCv(cvText);
   const titles = Array.from(
@@ -395,20 +505,26 @@ export function suggestFromCv(cvText: string, fileName?: string): CvSuggestions 
   const industries = INDUSTRY_TERMS.filter((t) => lower.includes(t)).slice(0, 8);
   const industrySet = new Set(industries);
 
-  // Skills: the remaining keyphrases, bigrams first (they read like concrete
-  // skills/tools). Drop titles, industry terms, and geography (offered under
-  // their own fields, or not a skill at all), and drop any unigram already
-  // covered by a kept bigram so we don't show "stakeholder" and "management"
-  // next to "stakeholder management".
-  const skills: string[] = [];
-  const covered = new Set<string>();
-  const bigramFirst = [...phrases].sort((a, b) => Number(b.includes(" ")) - Number(a.includes(" ")));
-  for (const k of bigramFirst) {
-    if (titleSet.has(k) || industrySet.has(k) || isGeo(k)) continue;
-    if (!k.includes(" ") && covered.has(k)) continue;
-    skills.push(k);
-    if (k.includes(" ")) for (const w of k.split(" ")) covered.add(w);
-    if (skills.length >= 12) break;
+  // Skills: prefer items from a dedicated skills section (each skill stated
+  // once — the recurrence filter can't find them). Fall back to the keyphrase
+  // pass only when no skills section exists.
+  const sectionSkills = skillsFromSection(cvText);
+  let skills: string[];
+  if (sectionSkills.length >= 3) {
+    skills = sectionSkills
+      .filter((k) => !titleSet.has(k) && !industrySet.has(k))
+      .slice(0, 16);
+  } else {
+    skills = [];
+    const covered = new Set<string>();
+    const bigramFirst = [...phrases].sort((a, b) => Number(b.includes(" ")) - Number(a.includes(" ")));
+    for (const k of bigramFirst) {
+      if (titleSet.has(k) || industrySet.has(k) || isGeo(k)) continue;
+      if (!k.includes(" ") && covered.has(k)) continue;
+      skills.push(k);
+      if (k.includes(" ")) for (const w of k.split(" ")) covered.add(w);
+      if (skills.length >= 12) break;
+    }
   }
   return { titles, skills, industries };
 }
@@ -417,6 +533,7 @@ export function buildStrategy(cvText: string, answers: Answers): Strategy {
   const skills = splitList(answers.skills);
   const industries = splitList(answers.industries);
   const cvPhrases = keyphrasesFromCv(cvText);
+  const cvSectionSkills = skillsFromSection(cvText);
 
   // Target titles: use the user's answer, else fall back to the role-title
   // phrases in the CV (the role they hold / are looking for), most salient first.
@@ -427,27 +544,43 @@ export function buildStrategy(cvText: string, answers: Answers): Strategy {
   // Explicit questionnaire skills + industries are always primary must-haves.
   const explicitMust = Array.from(new Set([...skills, ...industries]));
 
-  // Promote the strongest CV-derived phrases to must-have so the CV can actually
-  // lift a matching job — previously the CV only fed nice-to-haves (max +10),
-  // which couldn't clear the AI-review gate. The remainder stay nice-to-have.
-  const cvMust = cvPhrases
+  // Promote the strongest CV-derived phrases to must-have. Prefer the dedicated
+  // skills section (clean, curated items) over the recurrence-based keyphrases
+  // (which surface layout-redundant metrics instead of actual skills).
+  const cvSkillPool = cvSectionSkills.length >= 3 ? cvSectionSkills : cvPhrases;
+  const cvMust = cvSkillPool
     .filter((k) => !explicitMust.includes(k) && !titleKeywords.includes(k))
     .slice(0, 8);
   const mustHaveKeywords = Array.from(new Set([...explicitMust, ...cvMust]));
 
-  const niceToHaveKeywords = cvPhrases.filter(
-    (k) => !mustHaveKeywords.includes(k) && !titleKeywords.includes(k)
+  const mustSet = new Set(mustHaveKeywords);
+  const titleSet = new Set(titleKeywords);
+  const niceToHaveKeywords = Array.from(new Set([...cvSkillPool, ...cvPhrases])).filter(
+    (k) => !mustSet.has(k) && !titleSet.has(k)
   );
 
   // Terms that drive the actual job scrape. Prefer the user's target titles;
   // otherwise fall back to the CV (bigrams first — they read like role names /
   // concrete skills) so a CV-only user isn't searched as a generic "manager".
+  // In keyword mode with no titles, the user's own include-words beat CV guesses.
+  const matchMode: MatchMode = answers.matchMode === "keywords" ? "keywords" : "ai";
+  const keywordFilter: KeywordFilter = {
+    includeAll: splitKeywords(answers.includeAll),
+    includeAny: splitKeywords(answers.includeAny),
+    excludeAny: splitKeywords(answers.excludeAny),
+  };
   const cvBigrams = cvPhrases.filter((k) => k.includes(" "));
+  const keywordTerms = [...keywordFilter.includeAll, ...keywordFilter.includeAny];
   const searchKeywords = titleKeywords.length
     ? titleKeywords
-    : (cvBigrams.length ? cvBigrams : cvPhrases).slice(0, 6);
+    : matchMode === "keywords" && keywordTerms.length
+      ? keywordTerms.slice(0, 6)
+      : (cvBigrams.length ? cvBigrams : cvPhrases).slice(0, 6);
 
-  const minSalary = answers.minSalary ? parseInt(answers.minSalary.replace(/[^\d]/g, ""), 10) : undefined;
+  // Lower end of a range, k/lakh suffixes and local separators all handled.
+  const minSalary = parseSalaryFloor(answers.minSalary);
+  // Currency/period left on "Auto" follow the Location field (see resolvePay).
+  const pay = resolvePay({ currency: answers.currency, salaryPeriod: answers.salaryPeriod, location: answers.locations });
 
   // The intent free-text fields go straight into the Gemini prompt (via
   // strategyDigest) without passing through splitList, so sanitize them here to
@@ -471,12 +604,18 @@ export function buildStrategy(cvText: string, answers: Answers): Strategy {
     searchKeywords,
     excludeKeywords: splitList(answers.dealbreakers),
     locations: splitList(answers.locations),
+    radiusKm: Number(answers.radiusKm) > 0 ? Math.min(Number(answers.radiusKm), 500) : undefined,
+    radiusCenter: Number(answers.radiusKm) > 0 ? sanitizeUserText(answers.locations).trim() || undefined : undefined,
     excludeLocations: splitList(answers.excludeLocations),
     minSalary: Number.isFinite(minSalary as number) ? minSalary : undefined,
-    currency: answers.currency?.trim() || undefined,
+    currency: pay.currency ?? (answers.currency?.trim() || undefined),
+    salaryPeriod: pay.period,
     seniority: answers.seniority?.trim().toLowerCase() || seniorityFromCv(cvText) || undefined,
     remoteOk: !!answers.remoteOk,
+    remoteMode: answers.remoteOk && answers.remoteMode ? answers.remoteMode : undefined,
     cvSeniority: seniorityFromCv(cvText),
+    matchMode,
+    keywordFilter,
     intent,
   };
 }

@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { geminiBudgetAvailable, recordGeminiSpend } from "./budget";
+import { geminiBudgetAvailable, recordGeminiSpend, apifyBudgetAvailable, recordApifySearch } from "./budget";
 
 // In the test env neither Upstash nor GEMINI_DAILY_TOKEN_BUDGET is configured, so
 // the guard is disabled: it must fail open (always allow) and recording spend must
@@ -12,5 +12,17 @@ describe("gemini budget guard (disabled / no Upstash)", () => {
 
   it("records spend without throwing when the guard is disabled", async () => {
     await expect(recordGeminiSpend(12345)).resolves.toBeUndefined();
+  });
+});
+
+// Same graceful-degradation contract for the per-user Apify scrape cap: with no
+// Upstash / APIFY_DAILY_SEARCH_BUDGET, it fails open and recording is a no-op.
+describe("apify per-user budget guard (disabled / no Upstash)", () => {
+  it("reports budget available when the guard is disabled", async () => {
+    await expect(apifyBudgetAvailable("user-1")).resolves.toBe(true);
+  });
+
+  it("records a search without throwing when the guard is disabled", async () => {
+    await expect(recordApifySearch("user-1")).resolves.toBeUndefined();
   });
 });

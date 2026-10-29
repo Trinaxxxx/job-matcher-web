@@ -4,6 +4,7 @@
 
 import type { Strategy } from "./strategy";
 import { INDUSTRY_TERMS } from "./strategy";
+import { compareSalary, type PayPeriod } from "./salary";
 
 export type RawJob = {
   title?: string;
@@ -14,6 +15,9 @@ export type RawJob = {
   source?: string;
   description?: string;
   postedDate?: string;
+  // Coordinates when the board gives an address-level position (not just a city
+  // centroid). Lets the radius filter skip geocoding and measure exactly.
+  geo?: { lat: number; lon: number };
 };
 
 export type ScoreResult = {
@@ -74,58 +78,7 @@ function countHits(text: string, needles: string[], wordish = false): { hits: st
   return { hits };
 }
 
-// Approximate full-time conversion factors, used to bring hourly/daily/weekly/
-// annual pay onto a common MONTHLY basis for comparison with the user's floor.
-const HOURS_PER_MONTH = (40 * 52) / 12; // 40h/week full-time ≈ 173.3h/month
-const WORKDAYS_PER_MONTH = 260 / 12; // ~21.7 working days/month
-const WEEKS_PER_MONTH = 52 / 12; // ≈ 4.33
-
-type SalaryBasis = "hourly" | "daily" | "weekly" | "monthly" | "annual";
-type ParsedSalary = { monthly: number; approx: boolean; basis: SalaryBasis };
-
-function detectBasis(s: string): SalaryBasis | null {
-  if (/(per\s*hour|\/\s*h(ou)?r|hourly|an hour|p\/h)\b/.test(s) || /\bhr\b/.test(s)) return "hourly";
-  if (/(per\s*day|\/\s*day|daily|a day)\b/.test(s)) return "daily";
-  if (/(per\s*week|\/\s*w(ee)?k|weekly|a week|p\/w)\b/.test(s)) return "weekly";
-  if (/(per\s*month|\/\s*mo(nth)?|monthly|a month|pcm|p\/m)\b/.test(s)) return "monthly";
-  if (/(per\s*(year|annum)|\/\s*y(ea)?r|annually|annual|yearly|a year|p\.?a\.?)\b/.test(s)) return "annual";
-  return null;
-}
-
-// Parse a free-text salary into an approximate monthly figure. Handles k/m
-// suffixes ("120k" → 120000, "1.2m" → 1_200_000), thousands commas, ranges (uses
-// the top of the range), and hourly/daily/weekly/annual periods. Returns null
-// when no usable number is present (e.g. "Negotiable").
-function parseSalary(salary?: string): ParsedSalary | null {
-  if (!salary) return null;
-  const s = salary.toLowerCase().replace(/(\d),(\d)/g, "$1$2"); // strip thousands commas
-  const nums: number[] = [];
-  for (const m of s.matchAll(/(\d+(?:\.\d+)?)\s*([km])?/g)) {
-    let v = parseFloat(m[1]);
-    if (!Number.isFinite(v)) continue;
-    if (m[2] === "k") v *= 1_000;
-    else if (m[2] === "m") v *= 1_000_000;
-    nums.push(v);
-  }
-  if (!nums.length) return null;
-  const amt = Math.max(...nums);
-
-  let basis = detectBasis(s);
-  if (!basis) basis = amt >= 30_000 ? "annual" : "monthly"; // no period stated: infer by magnitude
-
-  switch (basis) {
-    case "hourly":
-      return { monthly: amt * HOURS_PER_MONTH, approx: true, basis };
-    case "daily":
-      return { monthly: amt * WORKDAYS_PER_MONTH, approx: true, basis };
-    case "weekly":
-      return { monthly: amt * WEEKS_PER_MONTH, approx: true, basis };
-    case "annual":
-      return { monthly: amt / 12, approx: true, basis };
-    default:
-      return { monthly: amt, approx: false, basis: "monthly" };
-  }
-}
+const BASIS: Record<PayPeriod, string> = { hour: "hourly", day: "daily", week: "weekly", fortnight: "fortnightly", semimonth: "semi-monthly", month: "monthly", year: "annual" };
 
 function tierFor(score: number): string {
   if (score >= 80) return "Strong match";
@@ -149,6 +102,26 @@ export function scoreJob(job: RawJob, s: Strategy): ScoreResult {
       return { score: 0, tier: "Weak", reasons: [`Excluded: dealbreaker "${ex}" in title`], excluded: true, excludeReason: `Dealbreaker "${ex}" in title` };
     }
   }
+  // Keyword mode: the user's own word lists are HARD filters on title + body
+  // (no AI pass will rescue a near-miss, so these decide what the user sees).
+  // Word-boundary matching so "java" doesn't pass a "javascript" job.
+  const kf = s.matchMode === "keywords" ? s.keywordFilter : undefined;
+  let anyHits: string[] = [];
+  if (kf) {
+    const banned = countHits(text, kf.excludeAny, true).hits;
+    if (banned.length) {
+      return { score: 0, tier: "Weak", reasons: [`Excluded: contains "${banned[0]}"`], excluded: true, excludeReason: `Contains excluded word "${banned[0]}"` };
+    }
+    const missing = kf.includeAll.filter((k) => !hasWord(text, k));
+    if (missing.length) {
+      return { score: 0, tier: "Weak", reasons: [`Excluded: missing required "${missing[0]}"`], excluded: true, excludeReason: `Missing required word "${missing[0]}"` };
+    }
+    anyHits = countHits(text, kf.includeAny, true).hits;
+    if (kf.includeAny.length && !anyHits.length) {
+      return { score: 0, tier: "Weak", reasons: ["Excluded: none of your keywords found"], excluded: true, excludeReason: "None of your keywords found" };
+    }
+  }
+
   // Location the user wants to avoid. Also match the COMPANY name: an avoid-term
   // like "India" often identifies the employer's base (e.g. "Tempsens Instruments
   // (India) Limited" posting a KL role) rather than the job's location field, and
@@ -179,6 +152,16 @@ export function scoreJob(job: RawJob, s: Strategy): ScoreResult {
   } else if (s.titleKeywords.length) {
     score -= 8;
     reasons.push(`-8 no target-role keyword found`);
+  }
+
+  // Keyword mode ranking: more of the user's keywords present = closer fit.
+  if (kf) {
+    const matched = [...kf.includeAll, ...anyHits];
+    if (matched.length) {
+      const pts = Math.min(24, matched.length * 4);
+      score += pts;
+      reasons.push(`+${pts} matched your keywords (${matched.slice(0, 5).join(", ")})`);
+    }
   }
 
   // Must-have skills / industries.
@@ -293,24 +276,44 @@ export function scoreJob(job: RawJob, s: Strategy): ScoreResult {
     reasons.push(`-${pts} dealbreaker term(s) in description (${softExcl.slice(0, 3).join(", ")})`);
   }
 
-  // Salary floor. Job pay is normalized to an approximate MONTHLY figure so
-  // hourly/annual/etc. postings compare fairly against the user's monthly floor.
+  // Salary floor. Job pay is parsed in its local format (see lib/salary.ts) and
+  // converted to the floor's period (month or year). A job in a DIFFERENT
+  // currency is never compared — a stale or wrong conversion would silently hide
+  // good jobs — and a job only slightly under the floor after a month↔year
+  // conversion is kept (13th/14th-month pay, varying hours).
   if (s.minSalary) {
-    const parsed = parseSalary(job.salary);
-    if (parsed !== null) {
-      const amt = Math.round(parsed.monthly);
-      const tag = parsed.approx ? ` (~approx, ${parsed.basis})` : "";
-      if (amt < s.minSalary) {
+    const floorPeriod = s.salaryPeriod ?? "month";
+    const v = compareSalary(job.salary, { amount: s.minSalary, period: floorPeriod, currency: s.currency });
+    if (v.kind === "unclear") {
+      // Pay is stated but can't be read reliably (no period, implausible as a
+      // monthly/yearly figure) — keep the job and let the role match decide.
+      reasons.push(`pay "${job.salary}" is unclear (no pay period stated), so it wasn't used to filter`);
+    } else if (v.kind === "meets" || v.kind === "near" || v.kind === "below") {
+      const per = floorPeriod === "year" ? "yr" : "mo";
+      const cur = v.currency ? `${v.currency} ` : "";
+      const tag = v.approx ? ` (~approx, ${BASIS[v.jobPeriod]})` : "";
+      const pay = `${cur}~${v.jobAmount}/${per}${tag}`;
+      if (v.kind === "below") {
         // A stated salary below the user's floor is a hard disqualifier — exclude
         // it outright rather than merely docking points (a docked below-floor job
         // could still clear the AI-review gate and occupy the results). Jobs with
         // no parseable salary are NOT excluded: absent pay data is unknown, not
         // below-floor, so we leave them to the rest of the scoring.
-        const msg = `salary ~${amt}/mo${tag} below your floor ${s.minSalary}`;
+        const msg = `salary ${pay} below your floor ${s.minSalary}/${per}`;
         return { score: 0, tier: "Weak", reasons: [...reasons, `Excluded: ${msg}`], excluded: true, excludeReason: msg };
       }
-      score += 4;
-      reasons.push(`+4 salary ~${amt}/mo${tag} meets your floor`);
+      if (v.kind === "near") {
+        reasons.push(
+          v.jobAmount >= v.floor * 0.9
+            ? `salary ${pay} is within 10% of your floor ${s.minSalary}/${per}`
+            : `salary ${pay} is close to your floor ${s.minSalary}/${per} (may include 13th/14th-month pay)`
+        );
+      } else {
+        score += 4;
+        reasons.push(`+4 salary ${pay} meets your floor`);
+      }
+    } else if (v.kind === "other-currency") {
+      reasons.push(`salary is in ${v.jobCurrency}, not compared with your ${v.floorCurrency} floor`);
     }
   }
 

@@ -66,3 +66,52 @@ export async function recordGeminiSpend(tokens: number): Promise<void> {
     console.error("[budget] failed to record Gemini spend:", e instanceof Error ? e.message : e);
   }
 }
+
+// ---------------------------------------------------------------------------
+// PER-USER APIFY SCRAPE CAP
+//
+// The Apify key belongs to the user, so cost is theirs — but "theirs" still
+// includes a leaked/shared key or a curious user hammering the scrape, either of
+// which can burn their Apify credit fast. The sliding-window rate limit
+// (lib/ratelimit.ts) bounds burst rate (5 / 10 min); this bounds the DAILY total
+// per user, a ceiling the rate limit alone never imposes (5 every 10 min is 720 a
+// day). One search fans out to up to two actor runs, so this is a direct lid on
+// actor invocations per account per day. Keyed by userId, not IP, so it follows
+// the account that owns the key. Disabled when unset/0 or when Redis is absent.
+// ---------------------------------------------------------------------------
+const APIFY_DAILY_SEARCH_BUDGET = Number(process.env.APIFY_DAILY_SEARCH_BUDGET ?? 0);
+
+// Per-user UTC day bucket, e.g. "budget:apify:<userId>:2026-09-12".
+function apifyDayKey(userId: string): string {
+  return `budget:apify:${userId}:${new Date().toISOString().slice(0, 10)}`;
+}
+
+// True if this user has searches left in today's budget (or the guard is disabled
+// / Redis is absent). Checked once before the scrape. Like the Gemini guard this
+// is a safety cap, not exact accounting — recording happens after the scrape, so
+// concurrent searches can overshoot by roughly the concurrency count.
+export async function apifyBudgetAvailable(userId: string): Promise<boolean> {
+  if (!redis || APIFY_DAILY_SEARCH_BUDGET <= 0) return true;
+  try {
+    const used = Number((await redis.get<number>(apifyDayKey(userId))) ?? 0);
+    return used < APIFY_DAILY_SEARCH_BUDGET;
+  } catch (e) {
+    // Fail open: a Redis blip must not take search offline. The user's own Apify
+    // account limits / billing cap are the backstop.
+    console.error("[budget] apify budget check failed, allowing:", e instanceof Error ? e.message : e);
+    return true;
+  }
+}
+
+// Record one scrape against this user's daily bucket. Best-effort; key expires
+// after 48h so old days clean themselves up.
+export async function recordApifySearch(userId: string): Promise<void> {
+  if (!redis || APIFY_DAILY_SEARCH_BUDGET <= 0) return;
+  try {
+    const key = apifyDayKey(userId);
+    await redis.incr(key);
+    await redis.expire(key, 60 * 60 * 48);
+  } catch (e) {
+    console.error("[budget] failed to record apify search:", e instanceof Error ? e.message : e);
+  }
+}

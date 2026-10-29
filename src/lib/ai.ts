@@ -126,7 +126,15 @@ function strategyDigest(s: Strategy): string {
   if (s.excludeKeywords.length) parts.push(`Dealbreakers: ${s.excludeKeywords.join(", ")}`);
   if (s.locations.length) parts.push(`Preferred locations: ${s.locations.join(", ")}`);
   if (s.seniority) parts.push(`Desired seniority: ${s.seniority}`);
-  if (s.minSalary) parts.push(`Minimum salary: ${s.minSalary}${s.currency ? " " + s.currency : ""}`);
+  if (s.minSalary) {
+    // Most ads don't state pay. Treating that as a negative would bury strong
+    // matches, so the model is told to judge pay only when it's clearly stated.
+    parts.push(
+      `Minimum salary: ${s.minSalary}${s.currency ? " " + s.currency : ""}${s.salaryPeriod ? " per " + s.salaryPeriod : ""}. ` +
+        `Only lower the score when the ad clearly states pay below this. Missing, vague or ` +
+        `unclear pay, or a range that reaches this figure, is NOT a negative — judge on role fit.`
+    );
+  }
   if (s.remoteOk) parts.push(`Open to remote.`);
   // Intent block — what the candidate wants next, which the CV alone can't state.
   // This is the strongest signal for judging fit in the ambiguous mid-range.
