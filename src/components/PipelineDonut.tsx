@@ -10,7 +10,6 @@ export type PipelineSegment = {
 
 const RADIUS = 42;
 const STROKE = 16;
-const CIRC = 2 * Math.PI * RADIUS;
 
 /**
  * Pipeline funnel donut. Each segment (and its legend row) links to the
