@@ -42,11 +42,12 @@ export default function ResultsTable({ initialStatus }: { initialStatus?: string
     initialStatus && STATUSES.includes(initialStatus) ? initialStatus : null
   );
 
+  // loading/error are reset in the handlers that change `strongOnly` or `reload`
+  // (and start true/null on mount), so the effect doesn't call setState
+  // synchronously on every run.
   useEffect(() => {
     const controller = new AbortController();
     let active = true;
-    setLoading(true);
-    setError(null);
     const url = strongOnly ? "/api/jobs?minAiScore=85" : "/api/jobs";
     fetch(url, { signal: controller.signal })
       .then(async (r) => {
@@ -118,7 +119,11 @@ export default function ResultsTable({ initialStatus }: { initialStatus?: string
           <input
             type="checkbox"
             checked={strongOnly}
-            onChange={(e) => setStrongOnly(e.target.checked)}
+            onChange={(e) => {
+              setLoading(true);
+              setError(null);
+              setStrongOnly(e.target.checked);
+            }}
             className="accent-[var(--accent)]"
           />
           Strong fits only (AI score 85+)
@@ -172,7 +177,15 @@ export default function ResultsTable({ initialStatus }: { initialStatus?: string
             {error.kind === "auth" ? (
               <a href="/login" className="btn btn-primary btn-sm">Log in</a>
             ) : (
-              <button type="button" onClick={() => setReload((n) => n + 1)} className="btn btn-primary btn-sm">
+              <button
+                type="button"
+                onClick={() => {
+                  setLoading(true);
+                  setError(null);
+                  setReload((n) => n + 1);
+                }}
+                className="btn btn-primary btn-sm"
+              >
                 Try again
               </button>
             )}

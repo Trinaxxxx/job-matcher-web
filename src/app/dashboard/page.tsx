@@ -16,6 +16,64 @@ const STAGES: { status: string; color: string }[] = [
   { status: "Rejected", color: "var(--danger)" },
 ];
 
+function Check({ ok, label, hint }: { ok: boolean; label: string; hint: string }) {
+  return (
+    <li>
+      <Link
+        href="/profile"
+        className="group flex items-start gap-3 rounded-xl px-3 py-2.5 transition-colors hover:bg-surface-2"
+      >
+        <span
+          aria-hidden="true"
+          className={
+            "mt-0.5 grid h-5 w-5 shrink-0 place-items-center rounded-full " +
+            (ok
+              ? "bg-success text-white"
+              : "border border-subtle-strong text-muted-2 group-hover:border-accent group-hover:text-accent")
+          }
+        >
+          {ok ? (
+            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round">
+              <path d="m5 12 4.5 4.5L19 7" />
+            </svg>
+          ) : (
+            <span className="h-1.5 w-1.5 rounded-full bg-current opacity-40" />
+          )}
+        </span>
+        <span>
+          <span className={"block text-sm font-medium " + (ok ? "text-muted line-through" : "")}>{label}</span>
+          <span className="block text-xs text-muted">{hint}</span>
+        </span>
+        <span className="sr-only">{ok ? "(done)" : "(to do)"}</span>
+      </Link>
+    </li>
+  );
+}
+
+function Stat({
+  label,
+  value,
+  href,
+  hint,
+  accent,
+}: {
+  label: string;
+  value: number;
+  href: string;
+  hint: string;
+  accent?: boolean;
+}) {
+  return (
+    <Link href={href} className="card card-lift group flex flex-col justify-between p-5 transition-colors hover:border-accent">
+      <span className="text-xs font-medium uppercase tracking-[0.1em] text-muted">{label}</span>
+      <span className={"mt-2 font-mono text-4xl font-semibold tracking-tight tnum " + (accent && value > 0 ? "text-success" : "")}>
+        {value}
+      </span>
+      <span className="mt-1 text-xs text-muted">{hint}</span>
+    </Link>
+  );
+}
+
 export default async function Dashboard() {
   const userId = await getUserId();
   if (!userId) redirect("/login");
@@ -69,60 +127,6 @@ export default async function Dashboard() {
     { ok: hasApify, label: "Connect a scraping key", hint: "An Apify API key lets the app fetch live listings for you." },
   ];
   const done = steps.filter((s) => s.ok).length;
-
-  const Check = ({ ok, label, hint }: { ok: boolean; label: string; hint: string }) => (
-    <li>
-      <Link
-        href="/profile"
-        className="group flex items-start gap-3 rounded-xl px-3 py-2.5 transition-colors hover:bg-surface-2"
-      >
-        <span
-          aria-hidden="true"
-          className={
-            "mt-0.5 grid h-5 w-5 shrink-0 place-items-center rounded-full " +
-            (ok
-              ? "bg-success text-white"
-              : "border border-subtle-strong text-muted-2 group-hover:border-accent group-hover:text-accent")
-          }
-        >
-          {ok ? (
-            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round">
-              <path d="m5 12 4.5 4.5L19 7" />
-            </svg>
-          ) : (
-            <span className="h-1.5 w-1.5 rounded-full bg-current opacity-40" />
-          )}
-        </span>
-        <span>
-          <span className={"block text-sm font-medium " + (ok ? "text-muted line-through" : "")}>{label}</span>
-          <span className="block text-xs text-muted">{hint}</span>
-        </span>
-        <span className="sr-only">{ok ? "(done)" : "(to do)"}</span>
-      </Link>
-    </li>
-  );
-
-  const Stat = ({
-    label,
-    value,
-    href,
-    hint,
-    accent,
-  }: {
-    label: string;
-    value: number;
-    href: string;
-    hint: string;
-    accent?: boolean;
-  }) => (
-    <Link href={href} className="card card-lift group flex flex-col justify-between p-5 transition-colors hover:border-accent">
-      <span className="text-xs font-medium uppercase tracking-[0.1em] text-muted">{label}</span>
-      <span className={"mt-2 font-mono text-4xl font-semibold tracking-tight tnum " + (accent && value > 0 ? "text-success" : "")}>
-        {value}
-      </span>
-      <span className="mt-1 text-xs text-muted">{hint}</span>
-    </Link>
-  );
 
   return (
     <>

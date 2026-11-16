@@ -50,15 +50,16 @@ export default function PipelineDonut({
   }
 
   // Build arcs. pathLength=100 lets us use percentages directly for dasharray.
-  let cursor = 0;
+  // Each arc's offset is the running total of the percentages before it, computed
+  // with reduce so no render-scope variable is reassigned.
   const arcs = segments
     .filter((s) => s.count > 0)
-    .map((s) => {
+    .reduce<Array<PipelineSegment & { pct: number; offset: number }>>((acc, s) => {
       const pct = (s.count / total) * 100;
-      const arc = { ...s, pct, offset: cursor };
-      cursor += pct;
-      return arc;
-    });
+      const offset = acc.length ? acc[acc.length - 1].offset + acc[acc.length - 1].pct : 0;
+      acc.push({ ...s, pct, offset });
+      return acc;
+    }, []);
 
   return (
     <div className="flex flex-col items-center gap-6 sm:flex-row sm:items-center sm:gap-8">

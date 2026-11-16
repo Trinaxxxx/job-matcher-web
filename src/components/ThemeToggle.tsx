@@ -6,9 +6,14 @@ type Theme = "light" | "dark" | "system";
 export default function ThemeToggle() {
   const [theme, setTheme] = useState<Theme>("system");
 
+  // The server renders "system" (localStorage isn't available there), so we must
+  // sync to the stored preference after mount. This is the one case where a
+  // synchronous setState in an effect is intended and can't cause a loop — the
+  // deps are empty, so it runs once.
   useEffect(() => {
     const stored = localStorage.getItem("theme") as Theme | null;
     if (stored === "light" || stored === "dark") {
+      // eslint-disable-next-line react-hooks/set-state-in-effect
       setTheme(stored);
       document.documentElement.setAttribute("data-theme", stored);
     }
