@@ -1,5 +1,6 @@
 "use client";
 import { useEffect, useState } from "react";
+import { useRouter } from "next/navigation";
 import { RADIUS_OPTIONS_KM } from "@/lib/geo";
 import { REMOTE_MODE_OPTIONS } from "@/lib/remote";
 import type { MatchMode } from "@/lib/strategy";
@@ -86,6 +87,7 @@ type CvSuggestions = { titles: string[]; skills: string[]; industries: string[] 
 const EMPTY_SUGGESTIONS: CvSuggestions = { titles: [], skills: [], industries: [] };
 
 export default function ProfileForm() {
+  const router = useRouter();
   const [answers, setAnswers] = useState<Answers>({});
   const [apifyKey, setApifyKey] = useState("");
   const [hasApifyKey, setHasApifyKey] = useState(false);
@@ -96,6 +98,11 @@ export default function ProfileForm() {
   const [uploading, setUploading] = useState(false);
   const [busy, setBusy] = useState(false);
   const [suggestions, setSuggestions] = useState<CvSuggestions>(EMPTY_SUGGESTIONS);
+  // Account deletion (GDPR erasure) — gated behind an explicit confirm step.
+  const [confirmingDelete, setConfirmingDelete] = useState(false);
+  const [deleteConfirmText, setDeleteConfirmText] = useState("");
+  const [deleting, setDeleting] = useState(false);
+  const [deleteMsg, setDeleteMsg] = useState<Msg | null>(null);
 
   useEffect(() => {
     fetch("/api/profile")
@@ -241,6 +248,31 @@ export default function ProfileForm() {
       setSaveMsg({ kind: "error", text: "Save failed — check your connection and try again." });
     } finally {
       setBusy(false);
+    }
+  }
+
+  const canConfirmDelete = deleteConfirmText.trim().toUpperCase() === "DELETE";
+
+  async function deleteAccount() {
+    if (deleting || !canConfirmDelete) return;
+    setDeleting(true);
+    setDeleteMsg(null);
+    try {
+      const res = await fetch("/api/account", { method: "DELETE" });
+      if (!res.ok) {
+        const d = await res.json().catch(() => ({}));
+        setDeleteMsg({ kind: "error", text: d.error || "Couldn’t delete your account. Please try again." });
+        setDeleting(false);
+        return;
+      }
+      // Account and session are gone — go home and refresh so the server
+      // re-renders without the (now-cleared) session. (No setDeleting(false):
+      // we're navigating away.)
+      router.push("/");
+      router.refresh();
+    } catch {
+      setDeleteMsg({ kind: "error", text: "Delete failed — check your connection and try again." });
+      setDeleting(false);
     }
   }
 
@@ -454,6 +486,62 @@ export default function ProfileForm() {
           </span>
         </div>
       </form>
+
+      {/* Danger zone — permanent account deletion */}
+      <section className="card card-lift border-[var(--danger)]/40 p-6">
+        <h2 className="font-display text-lg font-semibold text-[var(--danger)]">Delete my account</h2>
+        <p className={HINT}>
+          Permanently deletes your account and everything in it — your profile, CV text, saved jobs,
+          and your encrypted Apify key. This can&apos;t be undone.
+        </p>
+        {!confirmingDelete ? (
+          <button
+            type="button"
+            onClick={() => { setConfirmingDelete(true); setDeleteMsg(null); }}
+            className="btn btn-ghost mt-4 border border-[var(--danger)] px-5 py-2.5 text-[var(--danger)] hover:bg-[var(--danger)]/10"
+          >
+            Delete my account
+          </button>
+        ) : (
+          <div className="mt-4 flex flex-col gap-3">
+            <div>
+              <label className={LABEL} htmlFor="deleteConfirm">
+                Type <strong>DELETE</strong> to confirm
+              </label>
+              <input
+                id="deleteConfirm"
+                className={FIELD + " mt-1 max-w-xs"}
+                type="text"
+                autoComplete="off"
+                value={deleteConfirmText}
+                onChange={(e) => setDeleteConfirmText(e.target.value)}
+                placeholder="DELETE"
+              />
+            </div>
+            <div className="flex flex-wrap items-center gap-3">
+              <button
+                type="button"
+                disabled={deleting || !canConfirmDelete}
+                onClick={deleteAccount}
+                className="btn px-5 py-2.5 text-white [background:var(--danger)] hover:brightness-95 disabled:cursor-not-allowed disabled:opacity-60"
+              >
+                {deleting ? "Deleting…" : "Permanently delete"}
+              </button>
+              <button
+                type="button"
+                disabled={deleting}
+                onClick={() => { setConfirmingDelete(false); setDeleteConfirmText(""); setDeleteMsg(null); }}
+                className="btn btn-ghost px-5 py-2.5"
+              >
+                Cancel
+              </button>
+            </div>
+          </div>
+        )}
+        <p role="status" aria-live="polite" className="min-h-[1.25rem]">
+          {deleteMsg && <span className={`text-sm ${toneClass(deleteMsg.kind)}`}>{deleteMsg.text}</span>}
+        </p>
+      </section>
     </div>
   );
 }
