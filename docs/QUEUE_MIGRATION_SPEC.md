@@ -228,6 +228,31 @@ A feature flag (`SEARCH_ASYNC`) can gate phases 3–4 so you can fall back to sy
 - Dep: `inngest` (+ `inngest-cli` for local dev) — or nothing new if Vercel Workflow.
 - Env: `INNGEST_EVENT_KEY`, `INNGEST_SIGNING_KEY` (prod). Local dev needs neither.
 
+## 12a. Prototype status (2026-11-16)
+
+A working prototype of phases 1–4 is in the tree (Inngest chosen):
+
+- `src/lib/pipeline.ts` — extracted `runSearchPipeline()` + `precheckSearch()` + `SearchError`.
+- `prisma/schema.prisma` — `SearchRun` model + `User.searchRuns`. **Run `npm run db:push`
+  to create the table** (not yet applied — needs your Neon `DATABASE_URL`).
+- `src/lib/inngest.ts` — Inngest client + `searchWorker` (per-user concurrency 1, retries 1,
+  idempotent on `runId`).
+- `src/app/api/inngest/route.ts` — Inngest serve endpoint.
+- `src/app/api/search/route.ts` — now validates + enqueues, returns `{ runId }` (202).
+- `src/app/api/search/[runId]/route.ts` — status polling endpoint.
+- `src/components/RunSearch.tsx` — enqueue + poll with per-stage progress copy.
+
+Verified: `tsc --noEmit` clean, `eslint` clean, `vitest` 291/291 pass. **Not yet run
+end-to-end** — that needs `npm run db:push`, then two terminals: `npm run dev` and
+`npx inngest-cli dev -u http://localhost:3000/api/inngest`, plus a valid Apify key.
+
+Known prototype shortcuts (follow-ups):
+- The pipeline runs as one unit, so a worker retry re-runs the scrape (re-charges Apify).
+  Decompose into `step.run()` stages for granular retry.
+- No orphaned-run sweeper yet (§8).
+- `inngest` install added 7 npm advisories (5 moderate, 2 high) — audit before shipping,
+  since the recent commits had cleared the tree.
+
 ## 12. Open questions
 
 1. **Inngest vs Vercel Workflow** — decide before phase 3. Recommendation: Inngest.

@@ -68,8 +68,9 @@ export function clientKey(req: NextRequest): string {
 
 export type LimitKind = "auth" | "search" | "searchIp" | "general";
 
-// Returns true if the request is within the limit (or limiting is disabled),
-// false if it should be rejected with 429.
+// Returns true if the request is within the limit, false if it should be
+// rejected with 429. When no limiter is configured it allows in dev but rejects
+// in production (fail closed) — see the !limiter branch below.
 export async function checkRateLimit(
   req: NextRequest,
   kind: LimitKind,
@@ -83,7 +84,14 @@ export async function checkRateLimit(
         : kind === "searchIp"
           ? searchIpLimiter
           : generalLimiter;
-  if (!limiter) return true; // limiting disabled
+  if (!limiter) {
+    // No limiter means Upstash isn't configured. In production that's a
+    // misconfiguration, and silently allowing every request would strip
+    // brute-force / credential-stuffing / cost protection with no signal — so
+    // fail CLOSED (reject with 429). In dev (no Redis) limiting stays off so the
+    // app still runs. The loud startup warning above flags the prod case.
+    return process.env.NODE_ENV !== "production";
+  }
   const id = extraKey ? `${clientKey(req)}:${extraKey}` : clientKey(req);
   const { success } = await limiter.limit(id);
   return success;
