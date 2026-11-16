@@ -30,14 +30,19 @@ jobs:
       - name: Lint
         run: npm run lint
 
+      # Build must run before the standalone typecheck: `next build` generates
+      # the .next/types helpers (PageProps, LayoutProps, ...) that the app uses
+      # and that tsconfig includes. Those are gitignored, so `tsc --noEmit` can't
+      # resolve them on a fresh checkout until a build has produced them. (The
+      # build also type-checks the build graph; the tsc step adds test files etc.)
+      - name: Build
+        run: npm run build
+
       - name: Typecheck
         run: npx tsc --noEmit
 
       - name: Test
         run: npm test
-
-      - name: Build
-        run: npm run build
 
       # NOTE: `npm audit` is intentionally NOT a blocking step. The only open
       # advisory is a transitive zod 3.x nested under inngest, which has no
