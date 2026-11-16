@@ -23,6 +23,37 @@ model User {
 
   profile      Profile?
   jobs         Job[]
+  searchRuns   SearchRun[]
+}
+
+// A single background search run. The /api/search route creates one (status
+// "queued") and enqueues a job; the queue worker drives it through the stages and
+// fills the funnel stats. The UI polls GET /api/search/[runId] for status.
+model SearchRun {
+  id        String   @id @default(cuid())
+  userId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  // queued | scraping | scoring | reviewing | persisting | done | failed
+  status    String   @default("queued")
+  // Snapshot of the inputs this run was asked with, so the worker is self-contained.
+  params    Json
+
+  // Funnel stats, filled as stages complete. Same shape the route used to return.
+  scraped       Int?
+  kept          Int?
+  outsideRadius Int?
+  gated         Int?
+  aiReviewed    Int?
+  strongFit     Int?
+  aiTokens      Int?
+  saved         Int?
+
+  error     String?  @db.Text // user-facing message when status = "failed"
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([userId, createdAt])
 }
 
 // One profile per user: parsed CV text + questionnaire answers + derived strategy.

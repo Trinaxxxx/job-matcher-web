@@ -1,40 +1,110 @@
 "use client";
-import { useState } from "react";
+import { useState, useRef, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import { DATE_POSTED_OPTIONS, DEFAULT_POSTED_WITHIN_HOURS } from "@/lib/datePosted";
+
+// How the worker's run status maps to progress copy shown under the button.
+const STAGE_LABEL: Record<string, string> = {
+  queued: "Queued…",
+  scraping: "Searching job boards…",
+  scoring: "Scoring matches…",
+  reviewing: "Reading matches against your CV…",
+  persisting: "Saving your matches…",
+};
+
+const POLL_MS = 2000;
+const POLL_CEILING_MS = 5 * 60 * 1000; // stop polling after 5 min
 
 export default function RunSearch({ disabled }: { disabled: boolean }) {
   const router = useRouter();
   const [busy, setBusy] = useState(false);
+  const [stage, setStage] = useState<string | null>(null);
   const [msg, setMsg] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [postedWithinHours, setPostedWithinHours] = useState<number>(DEFAULT_POSTED_WITHIN_HOURS);
+  const timer = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  // Clean up any pending poll if the component unmounts mid-run.
+  useEffect(() => () => void (timer.current && clearTimeout(timer.current)), []);
+
+  function finish(next: { msg?: string; error?: string }) {
+    setBusy(false);
+    setStage(null);
+    if (next.msg) setMsg(next.msg);
+    if (next.error) setError(next.error);
+    if (next.msg) router.refresh();
+  }
+
+  async function poll(runId: string, startedAt: number) {
+    if (Date.now() - startedAt > POLL_CEILING_MS) {
+      finish({ msg: "Still running — check back on your Results in a moment." });
+      return;
+    }
+    let data: Record<string, unknown> = {};
+    try {
+      const res = await fetch(`/api/search/${runId}`);
+      data = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        finish({ error: (data.error as string) || "Couldn't check your search status." });
+        return;
+      }
+    } catch {
+      // Transient network blip — keep polling.
+      timer.current = setTimeout(() => poll(runId, startedAt), POLL_MS);
+      return;
+    }
+
+    if (data.status === "done") {
+      const saved = Number(data.saved ?? 0);
+      const outside = Number(data.outsideRadius ?? 0);
+      const radiusNote = outside
+        ? ` ${outside} ${outside === 1 ? "job was" : "jobs were"} outside your radius.`
+        : "";
+      finish({
+        msg:
+          (saved === 0
+            ? "No new matches this time — try again in a day or two."
+            : `Found ${saved} new ${saved === 1 ? "match" : "matches"} for you.`) + radiusNote,
+      });
+      return;
+    }
+    if (data.status === "failed") {
+      finish({ error: (data.error as string) || "Something went wrong while searching." });
+      return;
+    }
+
+    setStage(typeof data.status === "string" ? data.status : "queued");
+    timer.current = setTimeout(() => poll(runId, startedAt), POLL_MS);
+  }
 
   async function run() {
     setBusy(true);
     setMsg(null);
     setError(null);
-    const res = await fetch("/api/search", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ postedWithinHours }),
-    });
-    const data = await res.json().catch(() => ({}));
-    setBusy(false);
-    if (!res.ok) {
-      setError(data.error || "Something went wrong while searching. Check your scraping key and try again.");
+    setStage("queued");
+
+    let data: Record<string, unknown> = {};
+    try {
+      const res = await fetch("/api/search", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ postedWithinHours }),
+      });
+      data = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        finish({
+          error:
+            (data.error as string) ||
+            "Something went wrong while searching. Check your scraping key and try again.",
+        });
+        return;
+      }
+    } catch {
+      finish({ error: "Couldn't start your search. Please try again." });
       return;
     }
-    const radiusNote =
-      data.radiusKm && data.outsideRadius
-        ? ` ${data.outsideRadius} ${data.outsideRadius === 1 ? "job was" : "jobs were"} outside your ${data.radiusKm} km radius.`
-        : "";
-    setMsg(
-      (data.saved === 0
-        ? "No new matches this time — try again in a day or two."
-        : `Found ${data.saved} new ${data.saved === 1 ? "match" : "matches"} for you.`) + radiusNote
-    );
-    router.refresh();
+
+    poll(data.runId as string, Date.now());
   }
 
   return (
@@ -64,7 +134,7 @@ export default function RunSearch({ disabled }: { disabled: boolean }) {
             className="h-4 w-4 animate-spin rounded-full border-2 border-[var(--accent-fg)]/40 border-t-[var(--accent-fg)]"
           />
         )}
-        {busy ? "Finding matches… this may take a moment" : "Search for jobs"}
+        {busy ? (stage && STAGE_LABEL[stage]) || "Finding matches…" : "Search for jobs"}
       </button>
       {msg && (
         <p className="mt-3 rounded-lg bg-success-soft px-3 py-2 text-sm text-success">

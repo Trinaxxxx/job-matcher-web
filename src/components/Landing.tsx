@@ -132,7 +132,7 @@ function Mark({ compact = false }: { compact?: boolean }) {
       >
         jm
       </span>
-      <span className={compact ? "hidden sm:inline" : undefined}>Job Matcher</span>
+      <span className={compact ? "sr-only sm:not-sr-only" : undefined}>Job Matcher</span>
     </span>
   );
 }
@@ -141,7 +141,7 @@ function Header() {
   return (
     <header className="sticky top-0 z-20 border-b border-subtle bg-background/80 backdrop-blur-md">
       <nav className="mx-auto flex max-w-6xl items-center gap-3 px-4 py-3 sm:px-6">
-        <Link href="/" aria-label="Job Matcher home">
+        <Link href="/">
           <Mark compact />
         </Link>
         <div className="ml-auto flex items-center gap-1 sm:gap-2">
@@ -416,23 +416,23 @@ function Trust() {
   return (
     <section className="border-t border-subtle bg-surface-2/40">
       <div className="mx-auto max-w-6xl px-4 py-16 sm:px-6 lg:py-20">
-        <dl className="grid gap-x-10 gap-y-8 sm:grid-cols-2">
+        <ul className="grid gap-x-10 gap-y-8 sm:grid-cols-2">
           {TRUST.map((t) => (
-            <div key={t.term} className="flex gap-4">
+            <li key={t.term} className="flex gap-4">
               <span className="mt-0.5 grid h-9 w-9 shrink-0 place-items-center rounded-lg bg-accent-soft text-accent">
                 <Icon name={t.icon} />
               </span>
               <div>
-                <dt className="font-display font-semibold tracking-tight">
+                <h3 className="font-display font-semibold tracking-tight">
                   {t.term}
-                </dt>
-                <dd className="mt-1 text-sm leading-relaxed text-muted">
+                </h3>
+                <p className="mt-1 text-sm leading-relaxed text-muted">
                   {t.body}
-                </dd>
+                </p>
               </div>
-            </div>
+            </li>
           ))}
-        </dl>
+        </ul>
       </div>
     </section>
   );

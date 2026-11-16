@@ -5,9 +5,17 @@ import path from "path";
 // runtime, and Tailwind emits inline styles, so 'unsafe-inline' is required here
 // without a nonce-based setup. This still blocks loading scripts from arbitrary
 // third-party origins — the main XSS lever — and framing by other sites.
+//
+// 'unsafe-eval' is only needed in dev (Next HMR / React Fast Refresh use eval);
+// production builds don't, so we drop it there to tighten XSS containment.
+const isDev = process.env.NODE_ENV !== "production";
+const scriptSrc = isDev
+  ? "script-src 'self' 'unsafe-inline' 'unsafe-eval'"
+  : "script-src 'self' 'unsafe-inline'";
+
 const csp = [
   "default-src 'self'",
-  "script-src 'self' 'unsafe-inline' 'unsafe-eval'",
+  scriptSrc,
   "style-src 'self' 'unsafe-inline'",
   "img-src 'self' data: blob:",
   "font-src 'self' data:",

@@ -22,7 +22,7 @@
 
   --highlight: #FF6600;
   --highlight-hover: #E85A00;
-  --highlight-fg: #FFFFFF;
+  --highlight-fg: #1C1206;
   --highlight-soft: rgba(255, 102, 0, 0.12);
 
   --success: #2f7d53;
@@ -46,15 +46,15 @@
     --border: rgba(255, 255, 255, 0.1);
     --border-strong: rgba(255, 255, 255, 0.15);
 
-    --accent: #5FB8A9;
-    --accent-hover: #78C9BC;
+    --accent: #7AC9BA;
+    --accent-hover: #93D6C8;
     --accent-fg: #06141B;
-    --accent-soft: rgba(95, 184, 169, 0.12);
-    --ring: rgba(95, 184, 169, 0.45);
+    --accent-soft: rgba(122, 201, 186, 0.12);
+    --ring: rgba(122, 201, 186, 0.45);
 
     --highlight: #FF6600;
     --highlight-hover: #FF7A1A;
-    --highlight-fg: #FFFFFF;
+    --highlight-fg: #1C1206;
     --highlight-soft: rgba(255, 102, 0, 0.16);
 
     --success: #57b285;
@@ -77,15 +77,15 @@
   --border: rgba(255, 255, 255, 0.1);
   --border-strong: rgba(255, 255, 255, 0.15);
 
-  --accent: #5FB8A9;
-  --accent-hover: #78C9BC;
+  --accent: #7AC9BA;
+  --accent-hover: #93D6C8;
   --accent-fg: #06141B;
-  --accent-soft: rgba(95, 184, 169, 0.12);
-  --ring: rgba(95, 184, 169, 0.45);
+  --accent-soft: rgba(122, 201, 186, 0.12);
+  --ring: rgba(122, 201, 186, 0.45);
 
   --highlight: #FF6600;
   --highlight-hover: #FF7A1A;
-  --highlight-fg: #FFFFFF;
+  --highlight-fg: #1C1206;
   --highlight-soft: rgba(255, 102, 0, 0.16);
 
   --success: #57b285;
