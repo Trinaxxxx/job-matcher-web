@@ -1,0 +1,45 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    env:
+      # Dummy values so `prisma generate` and `next build` don't trip on a
+      # missing var. No real database is contacted here — the build only
+      # generates the Prisma client and compiles; nothing in CI runs a query.
+      DATABASE_URL: postgresql://user:pass@localhost:5432/db
+      DIRECT_URL: postgresql://user:pass@localhost:5432/db
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+
+      - run: npm ci
+
+      - name: Lint
+        run: npm run lint
+
+      - name: Typecheck
+        run: npx tsc --noEmit
+
+      - name: Test
+        run: npm test
+
+      - name: Build
+        run: npm run build
+
+      # NOTE: `npm audit` is intentionally NOT a blocking step. The only open
+      # advisory is a transitive zod 3.x nested under inngest, which has no
+      # patched release and can't move to v4 without breaking the queue — it
+      # would keep CI permanently red. Track it as an upstream-dependency item.
