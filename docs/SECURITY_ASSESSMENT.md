@@ -112,10 +112,12 @@ per-IP sliding windows on auth and search, with good `x-forwarded-for` spoofing
 notes (`clientKey`). **Gaps:** fails open (#1), and no CAPTCHA/bot verification
 (Vercel BotID is an easy add on signup/guest/demo).
 
-**15. Data privacy compliance** — Weak. No privacy policy, consent management,
-or user data-deletion/export path. Guest/demo accounts are created on every
-visit and never reaped — unbounded PII growth and no GDPR/CCPA erasure. Add a
-delete-my-data endpoint and a scheduled guest-account cleanup.
+**15. Data privacy compliance** — Partial (improved). A `DELETE /api/account`
+erasure endpoint (profile → "Delete my account") and a `CRON_SECRET`-guarded
+guest reaper (`/api/cron/reap-guests`, daily via `vercel.json`, deletes guests
+older than `GUEST_TTL_DAYS`) shipped in PR #8 — bounding guest PII growth and
+giving users GDPR/CCPA erasure. **Still open:** no privacy policy, consent
+management, or self-service data *export* path.
 
 **16. Incident response & awareness** — Partial. SECURITY.md defines private
 disclosure and SLAs (good). No internal IR runbook / tabletop (team-process,
@@ -139,5 +141,5 @@ Vercel/Neon dashboards.
 2. Document + require Inngest keys (#2)
 3. `zod >= 4.6.6` + CI `npm audit` gate (#3, 13)
 4. Drop `unsafe-eval` from CSP (#4)
-5. Guest-account reaper + data-deletion endpoint (#15)
+5. ~~Guest-account reaper + data-deletion endpoint (#15)~~ — shipped (PR #8)
 6. Error monitoring + auth/429 alerts (#10)
